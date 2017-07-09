@@ -75,6 +75,20 @@ class ReplayMemory(object):
         batch = random.sample(self.buffer, batch_size) 
         return batch
 
+class NamedReplayMemory(ReplayMemory):
+    def __init__(self, capacity, names):
+        super(NamedReplayMemory, self).__init__(capacity)
+        self.names = names
+
+    def sample_batch(self, batch_size):
+        batch = super(NamedReplayMemory, self).sample_batch(batch_size)
+        batch_dict = {}
+        
+        for id, name in enumerate(self.names):
+            batch_dict[name] = np.array([ data[id] for data in batch ])
+
+        return batch_dict        
+
 if __name__ == '__main__':
     import gym
     env = gym.make('Pong-v0')
@@ -85,7 +99,7 @@ if __name__ == '__main__':
     state_builder = StackedFrameStateBuilder(state_builder, 4)
     state_builder.set_state(env.reset())
 
-    replay_mem = ReplayMemory(10000)
+    replay_mem = NamedReplayMemory(capacity=10000, names=['state', 'action', 'reward', 'next_state', 'done'])
 
     while not done:
         state = state_builder.get_state(copy=True)
@@ -95,4 +109,5 @@ if __name__ == '__main__':
         next_state = state_builder.get_state(copy=True)
 
         replay_mem.append((state, action, reward, next_state, done))
-    
+        
+    replay_mem.sample_batch(32)

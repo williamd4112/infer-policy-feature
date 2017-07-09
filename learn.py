@@ -5,16 +5,16 @@ from tf_ops import *
 from model import *
 
 class DeepQLearner(object):
-    def __init__(self, model, **kwargs):
+    def __init__(self, model, lr, gamma):
         self.model = model
-        self.lr = kwargs['lr']
-        self.gamma = kwargs['gamma']
+        self.lr = lr
+        self.gamma = gamma
         
         self._build_train_op()
 
     def _build_train_op(self):
         # Model arguments
-        num_action = self.model.get_args()['num_action']
+        num_action = self.model.num_action
 
         # Inputs
         state = self.model.get_inputs()['state']
@@ -28,7 +28,7 @@ class DeepQLearner(object):
         target_q = self.model.get_outputs()['target_q']
 
         # Loss
-        action_ont_hot = tf.one_hot(action, num_action, 1.0, 0.0)
+        action_one_hot = tf.one_hot(action, num_action, 1.0, 0.0)
         pred = tf.reduce_sum(policy_q * action_one_hot, 1)
 
         target_q_max = tf.reduce_max(target_q, 1)

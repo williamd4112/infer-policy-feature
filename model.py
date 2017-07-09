@@ -4,10 +4,9 @@ import tensorflow as tf
 from tf_ops import *
 
 class Model(object):
-    def __init__(self, name, reuse, **kwargs):
+    def __init__(self, name, reuse):
         self.name = name
         self.reuse = reuse
-        self.args = kwargs
 
         self._init_inputs()
         self._init_model()
@@ -18,9 +17,6 @@ class Model(object):
     
     def get_outputs(self):
         return self.outputs
-
-    def get_args(self):
-        return self.args
 
 class PolicyStyleInferenceNetwork(object):
     def __init__(self):
@@ -35,19 +31,23 @@ class PolicyStyleInferenceNetwork(object):
             inputs=self.x)
         self.y = outputs
 
-class DeepQNetwork(object):      
+class DeepQNetwork(Model):
+    def __init__(self, name, reuse, state_shape, num_action):
+        self.state_shape = state_shape
+        self.num_action = num_action
+        super(DeepQNetwork, self).__init__(name, reuse)
+    
     def _init_inputs(self):
-        self.inputs = { 'state': tf.placeholder(dtype=tf.uint8, (None,) + self.args['state_shape'], name='state'),
-                        'reward': tf.placeholder(dtype=tf.float32, (None,), name='reward'),
-                        'action': tf.placeholder(dtype=tf.int32, (None,), name='action'),
-                        'next_state': tf.placeholder(dtype=tf.uint8, (None,) + self.args['state_shape'], name='next_state'),
-                        'done': tf.placeholder(dtype=tf.bool, (None,), name='done')}
+        self.inputs = { 'state': tf.placeholder(dtype=tf.uint8, shape=[None,] + self.state_shape, name='state'),
+                        'action': tf.placeholder(dtype=tf.int32, shape=[None,], name='action'),
+                        'reward': tf.placeholder(dtype=tf.float32, shape=[None,], name='reward'),
+                        'next_state': tf.placeholder(dtype=tf.uint8, shape=[None,] + self.state_shape, name='next_state'),
+                        'done': tf.placeholder(dtype=tf.bool, shape=[None,], name='done')}
 
-    def _init_model(self):
-        NUM_ACTION = self.args['num_action']
-        
+    def _init_model(self): 
         with tf.variable_scope(self.name, reuse=self.reuse):
-            state, reward, action, next_state, done = self.inputs
+            state = self.inputs['state']
+            next_state = self.inputs['next_state']
             with tf.variable_scope('policy', reuse=self.reuse):
                 self.policy_q = self._build_q_network(state)
             with tf.variable_scope('target', reuse=self.reuse):
@@ -59,7 +59,8 @@ class DeepQNetwork(object):
         
     def _build_q_network(self, state):
         l = state
-        l = tf.cast(l / 255.0, tf.float32)
+        l = tf.cast(l, tf.float32)
+        l = l / 255.0
         l = Conv2D(l, [8, 8], 32, 4, 'VALID', 'conv0', reuse=self.reuse)
         l = ReLu(l, 'relu0') 
         l = Conv2D(l, [4, 4], 64, 2, 'VALID', 'conv1', reuse=self.reuse)
@@ -68,7 +69,7 @@ class DeepQNetwork(object):
         l = ReLu(l, 'relu2')
         l = FC(l, 512, 'fc0')
         l = ReLu(l, 'relu3')
-        l = FC(l, NUM_ACTION, 'fc1')
+        l = FC(l, self.num_action, 'fc1')
         return l
             
         

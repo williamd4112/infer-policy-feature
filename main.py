@@ -4,32 +4,69 @@ import argparse, logging
 import cPickle as pickle
 import os, sys
 
-from model import PolicyStyleInferenceNetwork
+import gym
+
+from model import DeepQNetwork
+from learn import DeepQLearner
+from train import FeedDictTrainer
+
+from data import FrameStateBuilder, ResizeFrameStateBuilder, StackedFrameStateBuilder, NamedReplayMemory
+from util import get_config
 
 def main(args):
-    X = np.load(args.X)
-    X = np.reshape(X, [X.shape[0], X.shape[1], 81])
-    X_len = np.squeeze(np.load(args.X_len))
-    T = np.load(args.T)
- 
-    model = PolicyStyleInferenceNetwork()
-    
-    config = tf.ConfigProto()
-    config.gpu_options.allow_growth = True
-    with tf.Session(config=config) as sess:
-        init_op = tf.global_variables_initializer()
-        sess.run(init_op)
-        sess.run(model.y, feed_dict={model.x: X[:32], 
-                                    model.x_len: X_len[:32],
-                                    })
+    env = gym.make('Pong-v0')
+
+    model = DeepQNetwork(name='DQN', reuse=False, state_shape=[84, 84, 12], num_action=6)
+    learner = DeepQLearner(model, lr=1e-4, gamma=0.99)
+    trainer = FeedDictTrainer(learner)
+
+    state_builder = FrameStateBuilder([210, 160, 3], np.uint8)
+    state_builder = ResizeFrameStateBuilder(state_builder, (84, 84))
+    state_builder = StackedFrameStateBuilder(state_builder, 4)
+    state_builder.set_state(env.reset())
+
+    replay_mem = NamedReplayMemory(capacity=100000, names=[ model.get_inputs()['state'],
+                                                            model.get_inputs()['action'],
+                                                            model.get_inputs()['reward'],
+                                                            model.get_inputs()['next_state'],
+                                                            model.get_inputs()['done'] ])
+    min_replay_mem_size = 10000
+
+    with tf.Session(config=get_config()) as sess:
+        # Create initializer
+        init = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
+        sess.run(init)
+
+        # Fill replay memory
+        print('Fill replay memory ... ')
+        while replay_mem.size < min_replay_mem_size:
+            done = False
+            while not done:
+                state = state_builder.get_state(copy=True)
+                action = env.action_space.sample()
+                next_observation, reward, done, _ = env.step(action)
+                state_builder.set_state(next_observation)
+                next_state = state_builder.get_state(copy=True)
+                replay_mem.append((state, action, reward, next_state, done))
+            print('Verify implmentation')
+            trainer.train(sess, replay_mem.sample_batch(32))
+        
+        # Train agent
+        for epoch in range(10000):
+            done = False
+            while not done:
+                state = state_builder.get_state(copy=True)
+                action = env.action_space.sample()
+
+                next_observation, reward, done, _ = env.step(action)
+
+                state_builder.set_state(next_observation)
+                next_state = state_builder.get_state(copy=True)
+
+                replay_mem.append((state, action, reward, next_state, done))
+        
 
 if __name__ == '__main__':
-    logging.basicConfig(format='[%(asctime)s] %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p', level=logging.INFO)
-
     parser = argparse.ArgumentParser()
-    parser.add_argument('--X', help='X', type=str, default='X_small.npy')
-    parser.add_argument('--X_len', help='X_len', type=str, default='X_len_small.npy')
-    parser.add_argument('--T', help='T', type=str, default='T_small.npy')
     args = parser.parse_args()
- 
     main(args) 
