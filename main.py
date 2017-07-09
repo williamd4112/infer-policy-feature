@@ -8,6 +8,7 @@ import gym
 
 from model import DeepQNetwork
 from learn import DeepQLearner
+from agent import DeepQAgent
 from train import FeedDictTrainer
 
 from data import FrameStateBuilder, ResizeFrameStateBuilder, StackedFrameStateBuilder, NamedReplayMemory
@@ -18,12 +19,12 @@ def main(args):
 
     model = DeepQNetwork(name='DQN', reuse=False, state_shape=[84, 84, 12], num_action=6)
     learner = DeepQLearner(model, lr=1e-4, gamma=0.99)
+    agent = DeepQAgent(model=model)
     trainer = FeedDictTrainer(learner)
 
     state_builder = FrameStateBuilder([210, 160, 3], np.uint8)
     state_builder = ResizeFrameStateBuilder(state_builder, (84, 84))
     state_builder = StackedFrameStateBuilder(state_builder, 4)
-    state_builder.set_state(env.reset())
 
     replay_mem = NamedReplayMemory(capacity=100000, names=[ model.get_inputs()['state'],
                                                             model.get_inputs()['action'],
@@ -31,6 +32,7 @@ def main(args):
                                                             model.get_inputs()['next_state'],
                                                             model.get_inputs()['done'] ])
     min_replay_mem_size = 10000
+    batch_size = 32
 
     with tf.Session(config=get_config()) as sess:
         # Create initializer
@@ -41,6 +43,8 @@ def main(args):
         print('Fill replay memory ... ')
         while replay_mem.size < min_replay_mem_size:
             done = False
+            state_builder.reset()
+            state_builder.set_state(env.reset())
             while not done:
                 state = state_builder.get_state(copy=True)
                 action = env.action_space.sample()
@@ -48,22 +52,29 @@ def main(args):
                 state_builder.set_state(next_observation)
                 next_state = state_builder.get_state(copy=True)
                 replay_mem.append((state, action, reward, next_state, done))
-            print('Verify implmentation')
-            trainer.train(sess, replay_mem.sample_batch(32))
         
         # Train agent
-        for epoch in range(10000):
+        print ('Training ...')
+        for episode in range(10000):
             done = False
+            score = 0
+            state_builder.reset()
+            state_builder.set_state(env.reset())
             while not done:
                 state = state_builder.get_state(copy=True)
-                action = env.action_space.sample()
+                action = agent.act(sess, [state])
 
                 next_observation, reward, done, _ = env.step(action)
+                score += reward
 
                 state_builder.set_state(next_observation)
                 next_state = state_builder.get_state(copy=True)
 
                 replay_mem.append((state, action, reward, next_state, done))
+                trainer.train(sess, replay_mem.sample_batch(batch_size))
+
+                if done:
+                    print ('Episode %d, Score %d' % (episode, score))
         
 
 if __name__ == '__main__':

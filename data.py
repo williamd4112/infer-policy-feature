@@ -8,18 +8,24 @@ class StateBuilderProxy(object):
     def __init__(self, state_builder):
         self.state_builder = state_builder
 
-    def get_state(self, copy=False):
+    def reset(self):
         raise NotImplemented()
-    
+
     def set_state(self):
         raise NotImplemented()
-   
+
+    def get_state(self, copy=False):
+        raise NotImplemented()
+       
 class FrameStateBuilder(object):
     def __init__(self, state_shape, state_dtype):
         self.state_shape = state_shape
         self.state_dtype = state_dtype
         self.state = np.zeros(self.state_shape, dtype=self.state_dtype)
-    
+
+    def reset(self):
+        self.state.fill(0)    
+
     def set_state(self, observation):
         self.state = observation
 
@@ -30,6 +36,9 @@ class ResizeFrameStateBuilder(StateBuilderProxy):
     def __init__(self, state_builder, shape):
         super(ResizeFrameStateBuilder, self).__init__(state_builder)
         self.shape = shape
+
+    def reset(self):
+        self.state_builder.reset()
 
     def set_state(self, observation):
         self.state_builder.set_state(observation)
@@ -47,6 +56,10 @@ class StackedFrameStateBuilder(StateBuilderProxy):
 
         self.n_channel = state_shape[-1]        
         self.state_buffer = np.zeros(state_shape[:-1] + (state_shape[-1] * self.size,), dtype=state_dtype)
+
+    def reset(self):
+        self.state_builder.reset()
+        self.state_buffer.fill(0) 
 
     def set_state(self, observation):
         self.state_builder.set_state(observation)
