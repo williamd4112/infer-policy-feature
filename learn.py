@@ -13,6 +13,16 @@ class DeepQLearner(object):
         self._build_train_op()
 
     def _build_train_op(self):
+        self._build_update_target_network_op()
+        self._build_optimize_op()
+    
+    def _build_update_target_network_op(self):
+        policy_vars = self.model.get_policy_network_vars()
+        target_vars = self.model.get_target_network_vars()
+        assign_ops = [tf.assign(t_v, p_v) for p_v, t_v in zip(policy_vars, target_vars)]
+        self.update_target_network_op = tf.group(*assign_ops)
+
+    def _build_optimize_op(self):
         # Model arguments
         num_action = self.model.num_action
 
@@ -37,9 +47,14 @@ class DeepQLearner(object):
 
         # Optimization
         optimizer = tf.train.AdamOptimizer(self.lr, epsilon=1e-3)
+        self.global_step = tf.get_variable('global_step', shape=(), initializer=tf.constant_initializer(0.0), trainable=False)
+        self.train_op = optimizer.minimize(loss, global_step=self.global_step)
 
-        self.train_op = optimizer.minimize(loss)
-    
     def get_train_op(self):
-        return self.train_op     
- 
+        return self.train_op
+    
+    def get_update_target_network_op(self):
+        return self.update_target_network_op 
+
+    def get_global_step(self):
+        return self.global_step

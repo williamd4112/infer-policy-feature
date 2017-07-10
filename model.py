@@ -71,8 +71,13 @@ class DeepQNetwork(Model):
         l = ReLu(l, 'relu3')
         l = FC(l, self.num_action, 'fc1')
         return l
+
+    def get_policy_network_vars(self):
+        return tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='%s/policy' % self.name)
             
-        
+    def get_target_network_vars(self):
+        return tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='%s/target' % self.name)
+       
 
             
         

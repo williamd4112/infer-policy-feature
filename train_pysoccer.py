@@ -4,7 +4,7 @@ import argparse, logging
 import cPickle as pickle
 import os, sys
 
-import gym
+import soccer
 
 from tqdm import *
 
