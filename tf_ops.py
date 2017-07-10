@@ -19,13 +19,13 @@ def Conv2D(x, filter_shape, out_dim, strides, padding, name, reuse=False):
            
     with tf.variable_scope(name, reuse=reuse) as scope:
         in_dim = x.get_shape()[-1]
-        w = tf.get_variable('w', shape=filter_shape + [in_dim, out_dim], initializer=tf.contrib.layers.xavier_initializer_conv2d(uniform=True))
+        w = tf.get_variable('w', shape=filter_shape + [in_dim, out_dim], initializer=tf.truncated_normal_initializer(stddev=0.01))
         b = tf.get_variable('b', shape=[out_dim], initializer=tf.constant_initializer(0.0))
         l = tf.nn.conv2d(x, w, strides=[1, strides, strides, 1], padding=padding, name='conv2d')
         l = tf.nn.bias_add(l, b, name='bias_add')
     return l
 
-def FC(x, out_dim, name, initializer=tf.contrib.layers.xavier_initializer(uniform=True), reuse=False):
+def FC(x, out_dim, name, initializer=tf.truncated_normal_initializer(stddev=0.01), reuse=False):
     # x: input tensor (float32)[n, in_dim]
     # out_dim: output channels (int)
     # name: variable scope (str)
