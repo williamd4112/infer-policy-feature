@@ -3,7 +3,7 @@ import tensorflow as tf
 import argparse, logging
 import os, sys
 
-import soccer
+import gym
 
 from tqdm import *
 
@@ -16,9 +16,9 @@ from data import FrameStateBuilder, ResizeFrameStateBuilder, StackedFrameStateBu
 from util import get_config
 
 def main(args):
-    env = soccer.SoccerEnvironment(renderer_max_fps=60)
+    env = gym.make('Pong-v0')
 
-    model = DeepQNetwork(name='DQN', reuse=False, state_shape=[84, 84, 12], num_action=5)
+    model = DeepQNetwork(name='DQN', reuse=False, state_shape=[84, 84, 12], num_action=6)
     learner = DeepQLearner(model, lr=1e-4, gamma=0.99)
     agent = DeepQAgent(model=model)
     trainer = FeedDictTrainer(learner, callbacks=[PeriodicCallback(lambda sess : sess.run([learner.get_update_target_network_op()]), 10000)])
@@ -35,54 +35,52 @@ def main(args):
     min_replay_mem_size = 10000
     batch_size = 32
 
-    def observe(env):
-        env.render()
-        obs = env.renderer.get_screenshot()
-        obs = np.fromstring(obs, dtype=np.uint8)
-        obs = np.reshape(obs, [192, 288, 4])
-        obs = obs[:,:,:3]
-        return obs
-
     with tf.Session(config=get_config()) as sess:
         # Create initializer
         init = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
         sess.run(init)
+
+        # Fill replay memory
+        print('Fill replay memory ... ')
+        while replay_mem.size < min_replay_mem_size:
+            done = False
+            state_builder.reset()
+            state_builder.set_state(env.reset())
+            while not done:
+                state = state_builder.get_state(copy=True)
+                action = env.action_space.sample()
+                next_observation, reward, done, _ = env.step(action)
+                state_builder.set_state(next_observation)
+                next_state = state_builder.get_state(copy=True)
+                replay_mem.append((state, action, reward, next_state, done))
         
         # Train agent
         print ('Training ...')
         saver = tf.train.Saver()
         if args.load is not None:
             print ('Loading ...')
-            saver = tf.train.import_meta_graph('Soccer.meta')
+            saver = tf.train.import_meta_graph('DQN-Pong-v0.meta')
             saver.restore(sess,tf.train.latest_checkpoint('./'))
 
         global_step = sess.run([learner.get_global_step()])[0]
         try:
             begin_step = int(global_step)
-            end_step = 5000000 + min_replay_mem_size
+            end_step = 5000000
             done = False
-
-            env.reset()
             state_builder.reset()
-            state_builder.set_state(observe(env))
+            state_builder.set_state(env.reset())
 
             for timestep in tqdm(range(begin_step, end_step)):
                 state = state_builder.get_state(copy=True)
                 action = agent.act(sess, [state])
 
-                #next_observation, reward, done, _ = env.step(action)
-                response = env.take_action(action)
-                reward = response.reward
-                action = response.action
-                done = env.state.is_terminal()
+                next_observation, reward, done, _ = env.step(action)
 
-                state_builder.set_state(observe(env))
+                state_builder.set_state(next_observation)
                 next_state = state_builder.get_state(copy=True)
 
                 replay_mem.append((state, action, reward, next_state, done))
-
-                if replay_mem.size < min_replay_mem_size:
-                    global_step = trainer.train(sess, replay_mem.sample_batch(batch_size))
+                global_step = trainer.train(sess, replay_mem.sample_batch(batch_size))
 
                 if done:
                     done = False
@@ -91,7 +89,7 @@ def main(args):
 
         except KeyboardInterrupt:
             print ('Saving the model ...')
-            saver.save(sess, 'Soccer', global_step=global_step)       
+            saver.save(sess, 'DQN-Pong-v0', global_step=global_step)       
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()

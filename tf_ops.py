@@ -9,7 +9,7 @@ def ReLu(x, name, reuse=False):
         l = tf.nn.relu(x)
     return l
 
-def Conv2D(x, filter_shape, out_dim, strides, padding, name, reuse=False):
+def Conv2D(x, filter_shape, out_dim, strides, padding, name, initializer=tf.contrib.layers.variance_scaling_initializer(), reuse=False):
     # x: input tensor (float32)[n, w, h, c]
     # filter_shape: conv2d filter (int)[w, h]
     # out_dim: output channels (int)
@@ -19,13 +19,13 @@ def Conv2D(x, filter_shape, out_dim, strides, padding, name, reuse=False):
            
     with tf.variable_scope(name, reuse=reuse) as scope:
         in_dim = x.get_shape()[-1]
-        w = tf.get_variable('w', shape=filter_shape + [in_dim, out_dim], initializer=tf.truncated_normal_initializer(stddev=0.01))
+        w = tf.get_variable('w', shape=filter_shape + [in_dim, out_dim], initializer=initializer)
         b = tf.get_variable('b', shape=[out_dim], initializer=tf.constant_initializer(0.0))
         l = tf.nn.conv2d(x, w, strides=[1, strides, strides, 1], padding=padding, name='conv2d')
         l = tf.nn.bias_add(l, b, name='bias_add')
     return l
 
-def FC(x, out_dim, name, initializer=tf.truncated_normal_initializer(stddev=0.01), reuse=False):
+def FC(x, out_dim, name, initializer=tf.contrib.layers.variance_scaling_initializer(), reuse=False):
     # x: input tensor (float32)[n, in_dim]
     # out_dim: output channels (int)
     # name: variable scope (str)
