@@ -22,7 +22,7 @@ def main(args):
     max_timestep = 5000000
     replay_mem_capacity = 1000000
     min_replay_mem_size = 50000
-    dqn_state_shape = [84, 84, 12]
+    dqn_state_shape = [84, 84, 4]
     env_image_shape = [192, 288, 3]
     batch_size = 64
     num_action = 5
