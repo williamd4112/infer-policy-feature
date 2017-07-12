@@ -1,100 +1,92 @@
-import numpy as np
 import tensorflow as tf
 import argparse, logging
 import os, sys
-
-import soccer
 
 from tqdm import *
 
 from model import DeepQNetwork
 from learn import DeepQLearner
 from agent import DeepQAgent
-from train import FeedDictTrainer, PeriodicCallback
+from dqn import DeepQTrainer, DeepQReplayMemory, DeepQStateBuilder
+ 
+from soccer_player import SoccerPlayer
 
-from data import FrameStateBuilder, ResizeFrameStateBuilder, StackedFrameStateBuilder, NamedReplayMemory
 from util import get_config
 
 def main(args):
-    env = soccer.SoccerEnvironment(renderer_max_fps=60)
+    learning_rate = 4e-4
+    gamma = 0.99
+    eps = 0.99
+    eps_decay = 0.9
+    min_eps = 0.1
+    max_timestep = 5000000
+    replay_mem_capacity = 1000000
+    min_replay_mem_size = 50000
+    dqn_state_shape = [84, 84, 12]
+    env_image_shape = [192, 288, 3]
+    batch_size = 64
+    num_action = 5
+    report_stat_period = 2500
 
-    model = DeepQNetwork(name='DQN', reuse=False, state_shape=[84, 84, 12], num_action=5)
-    learner = DeepQLearner(model, lr=1e-4, gamma=0.99)
-    agent = DeepQAgent(model=model)
-    trainer = FeedDictTrainer(learner, callbacks=[PeriodicCallback(lambda sess : sess.run([learner.get_update_target_network_op()]), 10000)])
-    
-    state_builder = FrameStateBuilder([210, 160, 3], np.uint8)
-    state_builder = ResizeFrameStateBuilder(state_builder, (84, 84))
-    state_builder = StackedFrameStateBuilder(state_builder, 4)
-    
-    replay_mem = NamedReplayMemory(capacity=100000, names=[ model.get_inputs()['state'],
-                                                            model.get_inputs()['action'],
-                                                            model.get_inputs()['reward'],
-                                                            model.get_inputs()['next_state'],
-                                                            model.get_inputs()['done'] ])
-    min_replay_mem_size = 10000
-    batch_size = 32
+    logging.info('Initialize model with [state_shape = %s, num_action = %d] ... ' % (dqn_state_shape, num_action))
+    model = DeepQNetwork(name='DQN', reuse=False, state_shape=dqn_state_shape, num_action=num_action)
 
-    def observe(env):
-        env.render()
-        obs = env.renderer.get_screenshot()
-        obs = np.fromstring(obs, dtype=np.uint8)
-        obs = np.reshape(obs, [192, 288, 4])
-        obs = obs[:,:,:3]
-        return obs
+    logging.info('Initialize learner with [lr = %f, gamma = %f] ... ' % (learning_rate, gamma))
+    learner = DeepQLearner(model, lr=learning_rate, gamma=gamma)
 
+    logging.info('Initialize replay memory with [capacity = %d]' % (replay_mem_capacity))
+    replay = DeepQReplayMemory(model=model, capacity=replay_mem_capacity)
+  
+    logging.info('Initialize environment with [image shape = %s] ' % (env_image_shape))
+    state_builder = DeepQStateBuilder(image_shape=env_image_shape)
+    env = SoccerPlayer(state_builder=state_builder, viz=args.viz)
+   
     with tf.Session(config=get_config()) as sess:
-        # Create initializer
+        logging.info('Initialize trainer ... ')
+        trainer = DeepQTrainer(sess=sess, 
+                            model=model, 
+                            learner=learner,
+                            load=args.load)
+        
+        logging.info('Initialize agent with [eps = %f, eps_decay = %f, min_eps = %f] ... ' % (eps, eps_decay, min_eps))
+        agent = DeepQAgent(sess=sess, 
+                        model=model, 
+                        num_action=num_action, 
+                        eps=eps, 
+                        decay=eps_decay, 
+                        min_eps=min_eps)
+
+        logging.info('Initialize tf variables ... ')
         init = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
         sess.run(init)
-        
-        # Train agent
-        print ('Training ...')
-        saver = tf.train.Saver()
-        if args.load is not None:
-            print ('Loading ...')
-            saver = tf.train.import_meta_graph('Soccer.meta')
-            saver.restore(sess,tf.train.latest_checkpoint('./'))
 
-        global_step = sess.run([learner.get_global_step()])[0]
+        global_step = int(sess.run([learner.get_global_step()])[0])
+        logging.info('Start from global_step = %d ' % (global_step))
+
         try:
             begin_step = int(global_step)
-            end_step = 5000000 + min_replay_mem_size
-            done = False
-
-            env.reset()
-            state_builder.reset()
-            state_builder.set_state(observe(env))
-
+            end_step = max_timestep
+            state = env.reset()
             for timestep in tqdm(range(begin_step, end_step)):
-                state = state_builder.get_state(copy=True)
-                action = agent.act(sess, [state])
+                action = agent.act([state])[0]
+                next_state, reward, done, _ = env.step(action)
 
-                #next_observation, reward, done, _ = env.step(action)
-                response = env.take_action(action)
-                reward = response.reward
-                action = response.action
-                done = env.state.is_terminal()
-
-                state_builder.set_state(observe(env))
-                next_state = state_builder.get_state(copy=True)
-
-                replay_mem.append((state, action, reward, next_state, done))
-
-                if replay_mem.size < min_replay_mem_size:
-                    global_step = trainer.train(sess, replay_mem.sample_batch(batch_size))
-
-                if done:
-                    done = False
-                    state_builder.reset()
-                    state_builder.set_state(env.reset())
+                replay.append((state.copy(), action, reward, next_state.copy(), done))
+                if len(replay) >= min_replay_mem_size:
+                    trainer.train(replay.sample_batch(batch_size))
+                state = next_state
+                
+                if timestep % report_stat_period == 0 and done:
+                    logging.info('Statistics in recent 100 episodes: %s' % (env.stat()))
 
         except KeyboardInterrupt:
-            print ('Saving the model ...')
-            saver.save(sess, 'Soccer', global_step=global_step)       
+            logging.info ('Saving the model ...')
+            trainer.save()
 
 if __name__ == '__main__':
+    logging.basicConfig(format='[%(asctime)s] %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p', level=logging.INFO)
     parser = argparse.ArgumentParser()
     parser.add_argument('--load', help='checkpoints', type=str, default=None)
+    parser.add_argument('--viz', help='visualize', type=bool, default=False)
     args = parser.parse_args()
     main(args) 

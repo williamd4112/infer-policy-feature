@@ -4,15 +4,30 @@ import tensorflow as tf
 from tf_ops import *
 from model import *
 
-class DeepQLearner(object):
-    def __init__(self, model, lr, gamma):
+class Learner(object):
+    def __init__(self, model):
         self.model = model
+        self._build_graph()
+    
+    def _build_graph(self):
+        raise NotImplemented()    
+
+    def get_optimizer(self):
+        raise NotImplemented()
+
+    def get_grads_vars(self):
+        raise NotImplemented()
+
+    def get_global_step(self):
+        raise NotImplemented()
+
+class DeepQLearner(Learner):
+    def __init__(self, model, lr, gamma):
         self.lr = lr
         self.gamma = gamma
-        
-        self._build_train_op()
+        super(DeepQLearner, self).__init__(model)
 
-    def _build_train_op(self):
+    def _build_graph(self):
         self._build_update_target_network_op()
         self._build_optimize_op()
     
@@ -46,15 +61,18 @@ class DeepQLearner(object):
         loss = tf.reduce_mean(HuberLoss(target - pred), name='loss')
 
         # Optimization
-        optimizer = tf.train.AdamOptimizer(self.lr, epsilon=1e-3)
+        self.optimizer = tf.train.AdamOptimizer(self.lr, epsilon=1e-3)
+        self.grads_vars = self.optimizer.compute_gradients(loss)
         self.global_step = tf.get_variable('global_step', shape=(), initializer=tf.constant_initializer(0.0), trainable=False)
-        self.train_op = optimizer.minimize(loss, global_step=self.global_step)
+ 
+    def get_optimizer(self):
+        return self.optimizer
 
-    def get_train_op(self):
-        return self.train_op
-    
     def get_update_target_network_op(self):
         return self.update_target_network_op 
+
+    def get_grads_vars(self):
+        return self.grads_vars
 
     def get_global_step(self):
         return self.global_step

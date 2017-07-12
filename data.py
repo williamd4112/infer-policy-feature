@@ -9,13 +9,17 @@ class StateBuilderProxy(object):
         self.state_builder = state_builder
 
     def reset(self):
-        raise NotImplemented()
+        self.state_builder.reset()
 
-    def set_state(self):
-        raise NotImplemented()
+    def set_state(self, obs):
+        self.state_builder.set_state(obs)
 
     def get_state(self, copy=False):
-        raise NotImplemented()
+        return self.state_builder.get_state(copy=copy)
+
+    def __call__(self, obs):
+        self.set_state(obs)
+        return self.get_state(copy=False)
        
 class FrameStateBuilder(object):
     def __init__(self, state_shape, state_dtype):
@@ -32,19 +36,23 @@ class FrameStateBuilder(object):
     def get_state(self, copy=False):
         return self.state.copy() if copy else self.state
 
+class GrayscaleFrameStateBuilder(StateBuilderProxy):
+    def __init__(self, state_builder):
+        super(GrayscaleFrameStateBuilder, self).__init__(state_builder)
+
+    def get_state(self, copy=False):
+        return cv2.cvtColor(self.state_builder.get_state(copy=copy), cv2.COLOR_RGB2GRAY)[:, :, np.newaxis]
+
 class ResizeFrameStateBuilder(StateBuilderProxy):
     def __init__(self, state_builder, shape):
         super(ResizeFrameStateBuilder, self).__init__(state_builder)
         self.shape = shape
 
-    def reset(self):
-        self.state_builder.reset()
-
-    def set_state(self, observation):
-        self.state_builder.set_state(observation)
-
     def get_state(self, copy=False):
-        return cv2.resize(self.state_builder.get_state(copy=copy), self.shape)
+        resized_img = cv2.resize(self.state_builder.get_state(copy=copy), self.shape)
+        if len(resized_img.shape) == 2:
+            resized_img = resized_img[:, :, np.newaxis]
+        return resized_img
         
 class StackedFrameStateBuilder(StateBuilderProxy):
     def __init__(self, state_builder, size):
@@ -54,7 +62,7 @@ class StackedFrameStateBuilder(StateBuilderProxy):
         state_shape = self.state_builder.get_state().shape
         state_dtype = self.state_builder.get_state().dtype
 
-        self.n_channel = state_shape[-1]        
+        self.n_channel = state_shape[-1]
         self.state_buffer = np.zeros(state_shape[:-1] + (state_shape[-1] * self.size,), dtype=state_dtype)
 
     def reset(self):
@@ -63,11 +71,11 @@ class StackedFrameStateBuilder(StateBuilderProxy):
 
     def set_state(self, observation):
         self.state_builder.set_state(observation)
+        state = self.state_builder.get_state(copy=False)
+        self._append_state(state)
 
     def get_state(self, copy=False):
-        state = self.state_builder.get_state(copy=copy)
-        self._append_state(state)
-        return self.state_buffer
+        return self.state_buffer.copy() if copy else self.state_buffer
  
     def _append_state(self, state):
         self.state_buffer[:, :, :-self.n_channel] = self.state_buffer[:, :, self.n_channel:]
@@ -87,6 +95,9 @@ class ReplayMemory(object):
     def sample_batch(self, batch_size):
         batch = random.sample(self.buffer, batch_size) 
         return batch
+
+    def __len__(self):
+        return self.size
 
 class NamedReplayMemory(ReplayMemory):
     def __init__(self, capacity, names):

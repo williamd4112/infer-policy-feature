@@ -58,4 +58,4 @@ def HuberLoss(x, delta=1.0):
     return tf.where(
         tf.abs(x) < delta,
         tf.square(x) * 0.5,
-        delta * (tf.abs(x) - 0.5 * delta), name='huber_loss')
+        delta * (tf.abs(x) - 0.5 * delta), name='huber_loss') 
