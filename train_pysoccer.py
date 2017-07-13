@@ -14,11 +14,11 @@ from soccer_player import SoccerPlayer
 from util import get_config
 
 def main(args):
-    learning_rate = 4e-4
+    learning_rate = 2e-4
     gamma = 0.99
     eps = 0.99
     eps_decay = 0.9
-    eps_decay_period = 10000
+    eps_decay_period = 50000
     min_eps = 0.1
     max_timestep = 5000000
     replay_mem_capacity = 1000000
@@ -38,9 +38,9 @@ def main(args):
     logging.info('Initialize replay memory with [capacity = %d]' % (replay_mem_capacity))
     replay = DeepQReplayMemory(model=model, capacity=replay_mem_capacity)
   
-    logging.info('Initialize environment with [image shape = %s] ' % (env_image_shape))
+    logging.info('Initialize environment with [image shape = %s], [opponent = %s] ' % (env_image_shape, args.opponent))
     state_builder = DeepQStateBuilder(image_shape=env_image_shape)
-    env = SoccerPlayer(state_builder=state_builder, viz=args.viz)
+    env = SoccerPlayer(state_builder=state_builder, mode=args.opponent, viz=args.viz)
    
     with tf.Session(config=get_config()) as sess:
         logging.info('Initialize trainer ... ')
@@ -90,6 +90,7 @@ if __name__ == '__main__':
     logging.basicConfig(format='[%(asctime)s] %(message)s', datefmt='%m/%d/%Y %I:%M:%S %p', level=logging.INFO)
     parser = argparse.ArgumentParser()
     parser.add_argument('--load', help='checkpoints', type=str, default=None)
+    parser.add_argument('--opponent', help='oppoenent strategy', type=str, default=None)
     parser.add_argument('--viz', help='visualize', type=bool, default=False)
     args = parser.parse_args()
     main(args) 

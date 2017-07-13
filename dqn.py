@@ -9,6 +9,8 @@ from data import (FrameStateBuilder, GrayscaleFrameStateBuilder, \
         ResizeFrameStateBuilder, StackedFrameStateBuilder, 
         NamedReplayMemory, StateBuilderProxy)
 
+from util import load_model
+
 class DeepQReplayMemory(NamedReplayMemory):
     def __init__(self, model, capacity=1000000):
         self.model = model
@@ -64,9 +66,7 @@ class DeepQTrainer(object):
         # Build model saver
         self.saver = tf.train.Saver()
         if load is not None:
-            self.saver = tf.train.import_meta_graph(load)
-            # TODO: modify directory of checkpoint
-            self.saver.restore(self.sess, tf.train.latest_checkpoint('./'))
+            self.saver = load_model(self.sess, load)
 
     def train(self, batch):
         _, self.global_step = self.sess.run([self.train_op, self.global_step_op], feed_dict=batch)

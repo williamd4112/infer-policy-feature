@@ -10,11 +10,14 @@ from util import MovingAverageEpisodeRewardCounter
 class SoccerPlayer(object):
     IMAGE_SHAPE = [192, 288, 3]
 
-    def __init__(self, state_builder, viz=False):
+    def __init__(self, state_builder, frame_skip=4, viz=False, mode=None):
         # Create a renderer options
         renderer_options = soccer.RendererOptions(
-                                show_display=True, max_fps=60, enable_key_events=True) if viz else None
+                                show_display=True, max_fps=10, enable_key_events=True) if viz else None
+        assert mode in ['OFFENSIVE', 'DEFENSIVE', None]
 
+        self.mode = mode
+        self.frame_skip = frame_skip
         self.env = soccer.SoccerEnvironment(renderer_options)
         self.state_builder = state_builder
         self.done = False
@@ -31,16 +34,22 @@ class SoccerPlayer(object):
         self.reward = 0.0
         self.env.reset()
         self.state_builder.reset()
+        if self.mode is not None:
+            self.env.state.set_computer_agent_mode(self.mode)
         return self.state_builder(self.observe())
 
     def step(self, act):
-        response = self.env.take_action(self.env.actions[act])
-        next_obs = self.observe()
-
+        reward = 0.0
+        done = False
+        for t in range(self.frame_skip):
+            if t == self.frame_skip - 1:       
+                next_obs = self.observe()
+            response = self.env.take_action(self.env.actions[act])
+            reward += response.reward
+            done = self.env.state.is_terminal()            
+            if done:
+                break
         next_state = self.state_builder(next_obs)
-        reward = response.reward
-        action = response.action
-        done = self.env.state.is_terminal()
 
         self.done = done
         self.reward += reward

@@ -7,6 +7,12 @@ def get_config():
     config.gpu_options.allow_growth = True
     return config
 
+def load_model(sess, path):
+    saver = tf.train.import_meta_graph(path)
+    # TODO: modify directory of checkpoint
+    saver.restore(sess, tf.train.latest_checkpoint('./'))
+    return saver
+
 class MovingAverageEpisodeRewardCounter(object):
     def __init__(self, length=1000):
         self.length = length

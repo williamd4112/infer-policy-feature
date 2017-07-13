@@ -76,4 +76,3 @@ class DeepQLearner(Learner):
 
     def get_global_step(self):
         return self.global_step
-        return tf.assign(global_step, global_step+1)
