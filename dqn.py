@@ -58,7 +58,8 @@ class DeepQTrainer(object):
         self.update_op = learner.get_update_target_network_op()
 
         # Get global_step operation
-        self.global_step_op = learner.get_global_step()
+        self.global_step_var  = learner.get_global_step()
+        self.global_step_op = tf.assign(self.global_step_var, self.global_step_var + 1)
         
         # Build model saver
         self.saver = tf.train.Saver()
@@ -78,7 +79,10 @@ class DeepQTrainer(object):
             self.save()
 
         return self.global_step
+
+    def get_global_step(self):
+        return int(self.sess.run(self.global_step_var))
    
     def save(self):
-        self.saver.save(self.sess, self.name, global_step=self.global_step)
+        self.saver.save(self.sess, self.name, global_step=self.global_step_var)
 

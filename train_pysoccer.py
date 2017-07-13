@@ -18,6 +18,7 @@ def main(args):
     gamma = 0.99
     eps = 0.99
     eps_decay = 0.9
+    eps_decay_period = 10000
     min_eps = 0.1
     max_timestep = 5000000
     replay_mem_capacity = 1000000
@@ -26,7 +27,7 @@ def main(args):
     env_image_shape = [192, 288, 3]
     batch_size = 64
     num_action = 5
-    report_stat_period = 2500
+    report_stat_period = 5000
 
     logging.info('Initialize model with [state_shape = %s, num_action = %d] ... ' % (dqn_state_shape, num_action))
     model = DeepQNetwork(name='DQN', reuse=False, state_shape=dqn_state_shape, num_action=num_action)
@@ -53,14 +54,15 @@ def main(args):
                         model=model, 
                         num_action=num_action, 
                         eps=eps, 
-                        decay=eps_decay, 
+                        decay=eps_decay,
+                        decay_period=eps_decay_period,
                         min_eps=min_eps)
 
         logging.info('Initialize tf variables ... ')
         init = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
         sess.run(init)
 
-        global_step = int(sess.run([learner.get_global_step()])[0])
+        global_step = trainer.get_global_step()
         logging.info('Start from global_step = %d ' % (global_step))
 
         try:
@@ -76,8 +78,9 @@ def main(args):
                     trainer.train(replay.sample_batch(batch_size))
                 state = next_state
                 
-                if timestep % report_stat_period == 0 and done:
-                    logging.info('Statistics in recent 100 episodes: %s' % (env.stat()))
+                if (timestep + 1) % report_stat_period == 0:
+                    global_step = trainer.get_global_step()
+                    logging.info('global_step = %d, %s, eps = %f' % (global_step, env.stat(), agent.eps))
 
         except KeyboardInterrupt:
             logging.info ('Saving the model ...')

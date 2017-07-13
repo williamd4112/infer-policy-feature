@@ -19,7 +19,7 @@ class SoccerPlayer(object):
         self.state_builder = state_builder
         self.done = False
         self.reward = 0.0
-        self.counter = MovingAverageEpisodeRewardCounter(length=100)
+        self.counter = MovingAverageEpisodeRewardCounter()
   
     def observe(self):
         self.env.render()
@@ -47,8 +47,8 @@ class SoccerPlayer(object):
 
         # Auto reset
         if self.done:
-            self.reset()
             self.counter.add(self.reward)
+            self.reset()
 
         return next_state, reward, done, None
     
