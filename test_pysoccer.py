@@ -44,11 +44,11 @@ def main(args):
 
         n_episode = 0
         max_episode = args.episode
-        state = env.reset()
+        env.reset()
         while n_episode < max_episode:
+            state = env.state()
             action = agent.act([state])[0]
             next_state, reward, done, _ = env.step(action)
-            state = next_state
             
             if done:
                 logging.info('Episode %d = %f: %s, eps = %f' % (n_episode, reward, env.stat(), agent.eps))

@@ -52,9 +52,11 @@ class SoccerPlayer(object):
     def step(self, act):
         reward = 0.0
         done = False
+        computer_action = 0
         for t in range(self.frame_skip):
             response = self.env.take_action(self.env.actions[act])
             reward += response.reward
+            computer_action = self.env.actions.index(response.computer_action)
             done = self.env.state.is_terminal()            
             if done:
                 break
@@ -70,7 +72,7 @@ class SoccerPlayer(object):
             self.counter.add(self.reward)
             self.reset()
 
-        return next_state, reward, done, None
+        return next_state, reward, done, computer_action
     
     def stat(self):
         return self.counter()

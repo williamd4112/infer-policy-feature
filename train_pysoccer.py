@@ -29,7 +29,7 @@ def main(args):
   
     logging.info('Initialize environment with [image shape = %s], [opponent = %s] ' % (env_image_shape, args.opponent))
     state_builder = DeepQStateBuilder(image_shape=env_image_shape)
-    env = SoccerPlayer(state_builder=state_builder, mode=args.opponent, viz=args.viz)
+    env = SoccerPlayer(state_builder=state_builder, frame_skip=4, mode=args.opponent, viz=args.viz)
     
     train_dqn(env=env, model=model, learner=learner, num_action=num_action, load=args.load)
     
