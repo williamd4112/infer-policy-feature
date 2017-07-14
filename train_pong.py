@@ -10,7 +10,7 @@ from agent import DeepQAgent
 from dqn import DeepQTrainer, DeepQReplayMemory, DeepQStateBuilder 
 from wrapper import train_dqn
 
-from soccer_player import SoccerPlayer
+from gym_player import GymAtariPlayer
 from util import get_config
 
 def main(args):
@@ -19,18 +19,18 @@ def main(args):
 
     dqn_state_shape = [84, 84, 4]
     env_image_shape = [192, 288, 3]
-    num_action = 5
+    num_action = 6
+
+    logging.info('Initialize environment with [image shape = %s], [opponent = %s] ' % (env_image_shape, args.opponent))
+    state_builder = DeepQStateBuilder(image_shape=env_image_shape)
+    env = GymAtariPlayer(name='Pong-v0', state_builder=state_builder, viz=args.viz)
 
     logging.info('Initialize model with [state_shape = %s, num_action = %d] ... ' % (dqn_state_shape, num_action))
     model = DeepQNetwork(name='DQN', reuse=False, state_shape=dqn_state_shape, num_action=num_action)
 
     logging.info('Initialize learner with [lr = %f, gamma = %f] ... ' % (learning_rate, gamma))
     learner = DeepQLearner(model, lr=learning_rate, gamma=gamma)
-  
-    logging.info('Initialize environment with [image shape = %s], [opponent = %s] ' % (env_image_shape, args.opponent))
-    state_builder = DeepQStateBuilder(image_shape=env_image_shape)
-    env = SoccerPlayer(state_builder=state_builder, mode=args.opponent, viz=args.viz)
-    
+      
     train_dqn(env=env, model=model, learner=learner, num_action=num_action, load=args.load)
     
     

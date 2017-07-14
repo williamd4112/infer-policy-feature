@@ -1,13 +1,25 @@
 import tensorflow as tf
 import numpy as np
 
-def ReLu(x, name, reuse=False):
+def Concat(tensors, axis, name='concat'):
+    # tensors: list of tensors
+    # axis: concat axis
+    
+    return tf.concat(tensors, axis, name)
+
+def ReLu(x, name):
     # x: input tensor (Tensor)
     # name: variable scope (str)
-
-    with tf.variable_scope(name, reuse=reuse) as scope:
-        l = tf.nn.relu(x)
+    l = tf.nn.relu(x)
     return l
+
+def PReLu(x, alpha, name):
+    x = ((1 + alpha) * x + (1 - alpha) * tf.abs(x))
+    ret = tf.multiply(x, 0.5, name=name)
+    return ret
+
+def LeakyReLu(x, alpha, name):
+    return tf.maximum(x, alpha * x, name=name)
 
 def Conv2D(x, filter_shape, out_dim, strides, padding, name, initializer=tf.contrib.layers.variance_scaling_initializer(), reuse=False):
     # x: input tensor (float32)[n, w, h, c]
@@ -54,8 +66,10 @@ def Deconv2D(x, filter_shape, output_shape, out_dim, strides, padding, name, reu
         l = tf.nn.bias_add(l, b, name='bias_add')
     return l
 
-def HuberLoss(x, delta=1.0):
-    return tf.where(
-        tf.abs(x) < delta,
-        tf.square(x) * 0.5,
-        delta * (tf.abs(x) - 0.5 * delta), name='huber_loss') 
+def HuberLoss(x, delta=1.0, name='loss'):
+    sqrcost = tf.square(x)
+    abscost = tf.abs(x)
+    return tf.where(abscost < delta,
+                    sqrcost * 0.5,
+                    abscost * delta - 0.5 * delta ** 2)
+

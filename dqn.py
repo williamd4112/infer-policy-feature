@@ -33,7 +33,7 @@ class DeepQStateBuilder(StateBuilderProxy):
 class DeepQTrainer(object):
     def __init__(self, sess, model, learner, 
             clip_val=10.0,
-            update_freq=250, 
+            update_freq=2500, 
             save_freq=10000, 
             load=None, name='dqn-model'):
         self.sess = sess
@@ -46,6 +46,7 @@ class DeepQTrainer(object):
         # Get neccessary variables from learner
         optimizer = learner.get_optimizer()
         grads_vars = learner.get_grads_vars()
+        self.loss = learner.get_loss()
         
         # Preprocess gradient and vars
         grads = [k[0] for k in grads_vars]
@@ -62,6 +63,7 @@ class DeepQTrainer(object):
         # Get global_step operation
         self.global_step_var  = learner.get_global_step()
         self.global_step_op = tf.assign(self.global_step_var, self.global_step_var + 1)
+        self.global_step = 0
         
         # Build model saver
         self.saver = tf.train.Saver()
@@ -69,16 +71,16 @@ class DeepQTrainer(object):
             self.saver = load_model(self.sess, load)
 
     def train(self, batch):
-        _, self.global_step = self.sess.run([self.train_op, self.global_step_op], feed_dict=batch)
-        self.global_step = int(self.global_step)
-
         if self.global_step % self.update_freq == 0:
             self.sess.run([self.update_op]) 
+
+        _, loss, self.global_step = self.sess.run([self.train_op, self.loss, self.global_step_op], feed_dict=batch)
+        self.global_step = int(self.global_step)
 
         if self.global_step % self.save_freq == 0:
             self.save()
 
-        return self.global_step
+        return loss, self.global_step
 
     def get_global_step(self):
         return int(self.sess.run(self.global_step_var))

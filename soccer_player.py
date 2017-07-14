@@ -13,7 +13,7 @@ class SoccerPlayer(object):
     def __init__(self, state_builder, frame_skip=4, viz=False, mode=None):
         # Create a renderer options
         renderer_options = soccer.RendererOptions(
-                                show_display=True, max_fps=10, enable_key_events=True) if viz else None
+                                show_display=True, max_fps=5, enable_key_events=True) if viz else None
         assert mode in ['OFFENSIVE', 'DEFENSIVE', None]
 
         self.mode = mode
@@ -29,27 +29,38 @@ class SoccerPlayer(object):
         obs = self.env.renderer.get_screenshot()
         return obs
 
+    def state(self):
+        '''
+        return a copy of state
+        '''
+        return self.state_builder.get_state().copy()
+
     def reset(self):
+        # Reset variables
         self.done = False
         self.reward = 0.0
         self.env.reset()
         self.state_builder.reset()
         if self.mode is not None:
             self.env.state.set_computer_agent_mode(self.mode)
-        return self.state_builder(self.observe())
+
+        # Get initial state
+        obs = self.observe()
+        self.state_builder.set_state(obs)
+        return self.state_builder.get_state()
 
     def step(self, act):
         reward = 0.0
         done = False
         for t in range(self.frame_skip):
-            if t == self.frame_skip - 1:       
-                next_obs = self.observe()
             response = self.env.take_action(self.env.actions[act])
             reward += response.reward
             done = self.env.state.is_terminal()            
             if done:
                 break
-        next_state = self.state_builder(next_obs)
+        next_obs = self.observe()
+        self.state_builder.set_state(next_obs)
+        next_state = self.state_builder.get_state()
 
         self.done = done
         self.reward += reward

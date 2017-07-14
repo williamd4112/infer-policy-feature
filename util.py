@@ -14,9 +14,8 @@ def load_model(sess, path):
     return saver
 
 class MovingAverageEpisodeRewardCounter(object):
-    def __init__(self, length=1000):
-        self.length = length
-        self.buff = deque(maxlen=length)
+    def __init__(self):
+        self.buff = deque()
 
     def add(self, reward):
         self.buff.append(reward)
