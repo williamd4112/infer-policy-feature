@@ -100,7 +100,7 @@ class SoccerEnv(gym.Env):
         for _ in range(num_steps):
             ret = self.soccer_env.take_action(action)
             # TODO: pass computer action back
-            info['computer_action'] = ret.computer_action
+            info['computer_action'] = self.action_set.index(ret.computer_action)
             reward += ret.reward
         ob = self._get_obs()
 

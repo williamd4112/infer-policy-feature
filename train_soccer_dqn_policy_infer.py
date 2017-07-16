@@ -146,9 +146,9 @@ if __name__ == '__main__':
             action = act(np.array(obs)[None], update_eps=exploration.value(num_iters))[0]
             new_obs, rew, done, info = env.step(action)
 
-            # TODO: info can be opponent action
+            # Policy infer: add computer action for training
             opponent_action = info['computer_action']
-            print ('Opponent action %d' % opponent_action)          
+
             replay_buffer.add(obs, action, rew, new_obs, float(done))
             obs = new_obs
             if done:
