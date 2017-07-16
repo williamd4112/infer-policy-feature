@@ -96,12 +96,15 @@ class SoccerEnv(gym.Env):
         else:
             num_steps = self.np_random.randint(self.frameskip[0], self.frameskip[1])
         
+        info = {}
         for _ in range(num_steps):
             ret = self.soccer_env.take_action(action)
+            # TODO: pass computer action back
+            info['computer_action'] = ret.computer_action
             reward += ret.reward
         ob = self._get_obs()
 
-        return ob, reward, self.soccer_env.state.is_terminal(), {}
+        return ob, reward, self.soccer_env.state.is_terminal(), info
     
     def get_action_meanings(self):
         return self.action_meaning 

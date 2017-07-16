@@ -28,6 +28,11 @@ from baselines.common.atari_wrappers_deprecated import ScaledFloatFrame
 from soccer_env import SoccerEnv, wrap_dqn_for_soccer
 from model import model
 
+# import for policy infer
+# TODO: implement AugmentReplayMemory for policy infer
+#from data.augment_replay import AugmentReplayBuffer
+#from dqn_policy_infer.build_graph import build_train, build_act
+
 def parse_args():
     parser = argparse.ArgumentParser("Soccer environment")
     # Core DQN parameters
@@ -139,8 +144,11 @@ if __name__ == '__main__':
             num_iters += 1
             # Take action and store transition in the replay buffer.
             action = act(np.array(obs)[None], update_eps=exploration.value(num_iters))[0]
-            # TODO: info can be opponent action
             new_obs, rew, done, info = env.step(action)
+
+            # TODO: info can be opponent action
+            opponent_action = info['computer_action']
+            print ('Opponent action %d' % opponent_action)          
             replay_buffer.add(obs, action, rew, new_obs, float(done))
             obs = new_obs
             if done:
