@@ -77,27 +77,3 @@ class DeepQNetwork(Model):
             
     def get_target_network_vars(self):
         return tf.get_collection(tf.GraphKeys.GLOBAL_VARIABLES, scope='%s/target' % self.name)           
-
-class DeepRecurrentQNetwork(DeepQNetwork):
-    def _init_inputs(self):
-        flat_state_shape = [self.state_shape[0] * self.state_shape[1] * self.state_shape[2]]
-        self.inputs = { 'state': tf.placeholder(dtype=tf.uint8, shape=[None,] + flat_state_shape, name='state'),
-                        'action': tf.placeholder(dtype=tf.int32, shape=[None,], name='action'),
-                        'reward': tf.placeholder(dtype=tf.float32, shape=[None,], name='reward'),
-                        'next_state': tf.placeholder(dtype=tf.uint8, shape=[None,] + self.state_shape, name='next_state'),
-                        'done': tf.placeholder(dtype=tf.bool, shape=[None,], name='done')
-                        'episode_len': tf.placeholder(dtype=tf.int32, shape=[None,], name='episode_len')}
-        
-    def _build_q_network(self, state):
-        l = state
-        l = 
-        l = Conv2D(l, [8, 8], 32, 4, 'VALID', 'conv0', reuse=self.reuse)
-        l = PReLu(l, 0.001, 'relu0') 
-        l = Conv2D(l, [4, 4], 64, 2, 'VALID', 'conv1', reuse=self.reuse)
-        l = PReLu(l, 0.001, 'relu1')
-        l = Conv2D(l, [3, 3], 64, 1, 'VALID', 'conv2', reuse=self.reuse)
-        l = PReLu(l, 0.001, 'relu2')
-        l = FC(l, 512, 'fc0')
-        l = LeakyReLu(l, 0.01, 'relu3')
-        l = FC(l, self.num_action, 'fc1')
-        return l

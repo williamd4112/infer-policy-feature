@@ -3,7 +3,6 @@ import tensorflow as tf
 
 from model import DeepQNetwork
 from learn import DeepQLearner
-from agent import DeepQAgent
 
 from data import (FrameStateBuilder, GrayscaleFrameStateBuilder, \
         ResizeFrameStateBuilder, StackedFrameStateBuilder, 
@@ -11,26 +10,77 @@ from data import (FrameStateBuilder, GrayscaleFrameStateBuilder, \
 
 from util import load_model
 
-class DeepQReplayMemory(NamedReplayMemory):
+class DeepRecurrentQReplayMemory(NamedReplayMemory):
     def __init__(self, model, capacity=1000000):
         self.model = model
-        super(DeepQReplayMemory, self).__init__(capacity=capacity, names=[ 
+        super(DeepRecurrentQReplayMemory, self).__init__(capacity=capacity, names=[ 
                                                                 self.model.get_inputs()['state'],
                                                                 self.model.get_inputs()['action'],
                                                                 self.model.get_inputs()['reward'],
                                                                 self.model.get_inputs()['next_state'],
                                                                 self.model.get_inputs()['done']])
 
-class DeepQStateBuilder(StateBuilderProxy):
+class DeepRecurrentQStateBuilder(StateBuilderProxy):
     def __init__(self, image_shape=[192, 288, 3]):
         state_builder = FrameStateBuilder(image_shape, np.uint8)
         state_builder = GrayscaleFrameStateBuilder(state_builder)
         state_builder = ResizeFrameStateBuilder(state_builder, (84, 84))
         state_builder = StackedFrameStateBuilder(state_builder, 4)
-        super(DeepQStateBuilder, self).__init__(state_builder) 
+        super(DeepRecurrentQStateBuilder, self).__init__(state_builder) 
 
+class DeepRecurrentQNetwork(DeepQNetwork):
+    def _init_inputs(self):
+        self.inputs = { 'state': tf.placeholder(dtype=tf.uint8, shape=[None,] + self.state_shape, name='state'),
+                        'action': tf.placeholder(dtype=tf.int32, shape=[None,], name='action'),
+                        'reward': tf.placeholder(dtype=tf.float32, shape=[None,], name='reward'),
+                        'next_state': tf.placeholder(dtype=tf.uint8, shape=[None,] + self.state_shape, name='next_state'),
+                        'done': tf.placeholder(dtype=tf.bool, shape=[None,], name='done'),
+                        'episode_len': tf.placeholder(dtype=tf.int32, shape=[None,], name='episode_len')}
+        
+    def _build_q_network(self, state):
+        l = state
+        l = Conv2D(l, [8, 8], 32, 4, 'VALID', 'conv0', reuse=self.reuse)
+        l = PReLu(l, 0.001, 'relu0') 
+        l = Conv2D(l, [4, 4], 64, 2, 'VALID', 'conv1', reuse=self.reuse)
+        l = PReLu(l, 0.001, 'relu1')
+        l = Conv2D(l, [3, 3], 64, 1, 'VALID', 'conv2', reuse=self.reuse)
+        l = PReLu(l, 0.001, 'relu2')
+        l = FC(l, 512, 'fc0')
+        l = LeakyReLu(l, 0.01, 'relu3')
+        l = FC(l, self.num_action, 'fc1')
+        return l
 
-class DeepQTrainer(object):
+class DeepRecurrentQLearner(DeepQLearner): 
+    def _build_optimize_op(self):
+        # Model arguments
+        num_action = self.model.num_action
+
+        # Inputs
+        state = self.model.get_inputs()['state']
+        action = self.model.get_inputs()['action']
+        reward = self.model.get_inputs()['reward']
+        next_state = self.model.get_inputs()['next_state']
+        done = self.model.get_inputs()['done']
+
+        # Outputs
+        policy_q = self.model.get_outputs()['policy_q']
+        target_q = self.model.get_outputs()['target_q']
+
+        # Loss
+        action_one_hot = tf.one_hot(action, num_action, 1.0, 0.0)
+        pred = tf.reduce_sum(policy_q * action_one_hot, 1)
+
+        target_q_max = tf.reduce_max(target_q, 1)
+        target = reward + (1.0 - tf.cast(done, tf.float32)) * self.gamma * tf.stop_gradient(target_q_max)
+        loss = tf.reduce_mean(HuberLoss(target - pred), name='loss')
+        self.loss = loss
+
+        # Optimization
+        self.optimizer = tf.train.AdamOptimizer(self.lr, epsilon=1e-3)
+        self.grads_vars = self.optimizer.compute_gradients(loss)
+        self.global_step = tf.get_variable('global_step', shape=(), initializer=tf.constant_initializer(0.0), trainable=False) 
+
+class DeepRecurrentQTrainer(object):
     def __init__(self, sess, model, learner, 
             clip_val=10.0,
             update_freq=2500, 
@@ -67,6 +117,8 @@ class DeepQTrainer(object):
         
         # Build model saver
         self.saver = tf.train.Saver()
+        if load is not None:
+            self.saver = load_model(self.sess, load)
 
     def train(self, batch):
         if self.global_step % self.update_freq == 0:
@@ -83,10 +135,6 @@ class DeepQTrainer(object):
     def get_global_step(self):
         return int(self.sess.run(self.global_step_var))
    
-    def restore(self, load):    
-        if load is not None:
-            self.saver = load_model(self.sess, load)
-               
     def save(self):
         self.saver.save(self.sess, self.name, global_step=self.global_step_var)
 

@@ -2,7 +2,9 @@ import numpy as np
 import tensorflow as tf
 import os, sys
 
-import soccer
+# User-defined modules
+import pygame_soccer.soccer.soccer_environment as soccer_environment
+import pygame_soccer.soccer.soccer_renderer as soccer_renderer
 
 from tqdm import *
 from util import MovingAverageEpisodeRewardCounter
@@ -12,17 +14,20 @@ class SoccerPlayer(object):
 
     def __init__(self, state_builder, frame_skip=4, viz=False, mode=None):
         # Create a renderer options
-        renderer_options = soccer.RendererOptions(
+        renderer_options = soccer_renderer.RendererOptions(
                                 show_display=True, max_fps=5, enable_key_events=True) if viz else None
         assert mode in ['OFFENSIVE', 'DEFENSIVE', None]
 
         self.mode = mode
         self.frame_skip = frame_skip
-        self.env = soccer.SoccerEnvironment(renderer_options)
+        self.env = soccer_environment.SoccerEnvironment(renderer_options)
         self.state_builder = state_builder
         self.done = False
         self.reward = 0.0
         self.counter = MovingAverageEpisodeRewardCounter()
+
+    def get_num_action(self):
+        return len(self.env.actions)
   
     def observe(self):
         self.env.render()
@@ -54,6 +59,8 @@ class SoccerPlayer(object):
         done = False
         computer_action = 0
         for t in range(self.frame_skip):
+            if t == self.frame_skip - 1:
+                next_obs = self.observe()
             response = self.env.take_action(self.env.actions[act])
             reward += response.reward
             computer_action = self.env.actions.index(response.computer_action)

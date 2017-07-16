@@ -35,13 +35,14 @@ def main(args):
     state_builder = DeepQStateBuilder(image_shape=env_image_shape)
     env = SoccerPlayer(state_builder=state_builder, frame_skip=1, mode=args.opponent, viz=args.viz)
     
-    train_dqn_policy_infer(env=env, model=model, learner=learner, num_action=num_action, load=args.load)
+    train_dqn_policy_infer(env=env, model=model, learner=learner, num_action=num_action, init_eps=args.eps, load=args.load)
     
     
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--load', help='checkpoints', type=str, default=None)
     parser.add_argument('--opponent', help='oppoenent strategy', type=str, default=None)
+    parser.add_argument('--eps', help='eps', type=float, default=1.0)
     parser.add_argument('--viz', help='visualize', type=bool, default=False)
     args = parser.parse_args()
     main(args) 
