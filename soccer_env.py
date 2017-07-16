@@ -14,6 +14,9 @@ import pygame_soccer.soccer.soccer_renderer as soccer_renderer
 import logging
 logger = logging.getLogger(__name__)
 
+from baselines import deepq
+from baselines.common.atari_wrappers_deprecated import NoopResetEnv, MaxAndSkipEnv, FrameStack, ClippedRewardsWrapper, ScaledFloatFrame
+
 class ProcessSoccerFrame84(gym.ObservationWrapper):
     def __init__(self, env=None):
         super(ProcessSoccerFrame84, self).__init__(env)
@@ -98,7 +101,15 @@ class SoccerEnv(gym.Env):
             reward += ret.reward
         ob = self._get_obs()
 
-        return ob, reward, self.soccer_env.state.is_terminal(), None      
+        return ob, reward, self.soccer_env.state.is_terminal(), {}
     
     def get_action_meanings(self):
         return self.action_meaning 
+
+def wrap_dqn_for_soccer(env):
+    env = NoopResetEnv(env, noop_max=30)
+    env = MaxAndSkipEnv(env, skip=4)
+    env = ProcessSoccerFrame84(env)
+    env = FrameStack(env, 4)
+    env = ClippedRewardsWrapper(env)
+    return env
