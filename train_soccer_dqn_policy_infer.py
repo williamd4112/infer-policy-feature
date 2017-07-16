@@ -9,8 +9,6 @@ import time
 import baselines.common.tf_util as U
 
 from baselines import logger
-from baselines import deepq
-from baselines.deepq.replay_buffer import ReplayBuffer
 from baselines.common.misc_util import (
     boolean_flag,
     pickle_load,
@@ -26,12 +24,12 @@ from baselines.common.atari_wrappers_deprecated import ScaledFloatFrame
 # when updating this to non-deperecated ones, it is important to
 # copy over LazyFrames
 from soccer_env import SoccerEnv, wrap_dqn_for_soccer
-from model import model
 
 # import for policy infer
 # TODO: implement AugmentReplayMemory for policy infer
 #from data.augment_replay import AugmentReplayBuffer
-#from dqn_policy_infer.build_graph import build_train, build_act
+from experiment import deepq_policy_infer
+from data.augment_replay import AugmentReplayBuffer
 
 def parse_args():
     parser = argparse.ArgumentParser("Soccer environment")
@@ -105,9 +103,9 @@ if __name__ == '__main__':
 
     with U.make_session(4) as sess:
         # Create training graph and replay buffer
-        act, train, update_target, debug = deepq.build_train(
+        act, train, update_target, debug = deepq_policy_infer.build_train(
             make_obs_ph = lambda name: U.Uint8Input(env.observation_space.shape, name=name),  
-            q_func = model,
+            q_func = deepq_policy_infer.model,
             num_actions = env.action_space.n,
             optimizer = tf.train.AdamOptimizer(learning_rate=args.lr, epsilon=1e-4),
             gamma = 0.99,
@@ -122,7 +120,7 @@ if __name__ == '__main__':
             (approximate_num_iters / 5, 0.01)
         ], outside_value=0.01)
 
-        replay_buffer = ReplayBuffer(args.replay_buffer_size)
+        replay_buffer = AugmentReplayBuffer(args.replay_buffer_size)
 
         U.initialize()
         update_target()
@@ -149,7 +147,7 @@ if __name__ == '__main__':
             # Policy infer: add computer action for training
             opponent_action = info['computer_action']
 
-            replay_buffer.add(obs, action, rew, new_obs, float(done))
+            replay_buffer.add(obs, (action, opponent_action), rew, new_obs, float(done))
             obs = new_obs
             if done:
                 obs = env.reset()
@@ -157,11 +155,11 @@ if __name__ == '__main__':
             if (num_iters > max(5 * args.batch_size, args.replay_buffer_size // 20) and
                     num_iters % args.learning_freq == 0):
                 # Sample a bunch of transitions from replay buffer
-                obses_t, actions, rewards, obses_tp1, dones = replay_buffer.sample(args.batch_size)
+                obses_t, actions, rewards, obses_tp1, dones, opponent_actions = replay_buffer.sample(args.batch_size)
                 weights = np.ones_like(rewards)
 
                 # Minimize the error in Bellman's equation and compute TD-error
-                td_errors = train(obses_t, actions, rewards, obses_tp1, dones, weights)
+                td_errors = train(obses_t, actions, rewards, obses_tp1, dones, weights, opponent_actions)
 
             # Update target network.
             if num_iters % args.target_update_freq == 0:

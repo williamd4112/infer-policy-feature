@@ -108,7 +108,8 @@ def build_act(make_obs_ph, q_func, num_actions, scope="deepq", reuse=None):
 
         eps = tf.get_variable("eps", (), initializer=tf.constant_initializer(0))
 
-        q_values = q_func(observations_ph.get(), num_actions, scope="q_func")
+        # ignore opponent action prediction during act
+        q_values, _ = q_func(observations_ph.get(), num_actions, scope="q_func")
         deterministic_actions = tf.argmax(q_values, axis=1)
 
         batch_size = tf.shape(observations_ph.get())[0]
@@ -185,13 +186,15 @@ def build_train(make_obs_ph, q_func, num_actions, optimizer, grad_norm_clipping=
         obs_tp1_input = U.ensure_tf_input(make_obs_ph("obs_tp1"))
         done_mask_ph = tf.placeholder(tf.float32, [None], name="done")
         importance_weights_ph = tf.placeholder(tf.float32, [None], name="weight")
+        opponent_act_t_ph = tf.placeholder(tf.int32, [None], name='opponent_action')
 
         # q network evaluation
-        q_t = q_func(obs_t_input.get(), num_actions, scope="q_func", reuse=True)  # reuse parameters from act
+        q_t, opponent_act_pred_logit = q_func(obs_t_input.get(), num_actions, scope="q_func", reuse=True)  # reuse parameters from act
         q_func_vars = U.scope_vars(U.absolute_scope_name("q_func"))
 
         # target q network evalution
-        q_tp1 = q_func(obs_tp1_input.get(), num_actions, scope="target_q_func")
+        # ignore opponent action prediction in target network
+        q_tp1, _ = q_func(obs_tp1_input.get(), num_actions, scope="target_q_func")
         target_q_func_vars = U.scope_vars(U.absolute_scope_name("target_q_func"))
 
         # q scores for actions which we know were selected in the given state.
@@ -199,9 +202,12 @@ def build_train(make_obs_ph, q_func, num_actions, optimizer, grad_norm_clipping=
 
         # compute estimate of best possible value starting from state at t + 1
         if double_q:
-            q_tp1_using_online_net = q_func(obs_tp1_input.get(), num_actions, scope="q_func", reuse=True)
+            assert False, 'Double DQN variant has not yet been implemented'
+            '''
+            q_tp1_using_online_net, _ = q_func(obs_tp1_input.get(), num_actions, scope="q_func", reuse=True)
             q_tp1_best_using_online_net = tf.arg_max(q_tp1_using_online_net, 1)
             q_tp1_best = tf.reduce_sum(q_tp1 * tf.one_hot(q_tp1_best_using_online_net, num_actions), 1)
+            '''
         else:
             q_tp1_best = tf.reduce_max(q_tp1, 1)
         q_tp1_best_masked = (1.0 - done_mask_ph) * q_tp1_best
@@ -212,7 +218,14 @@ def build_train(make_obs_ph, q_func, num_actions, optimizer, grad_norm_clipping=
         # compute the error (potentially clipped)
         td_error = q_t_selected - tf.stop_gradient(q_t_selected_target)
         errors = U.huber_loss(td_error)
-        weighted_error = tf.reduce_mean(importance_weights_ph * errors)
+        
+        # TODO: compute oppponent action prediction error
+        act_pred_error = tf.nn.softmax_cross_entropy_with_logits(labels=tf.one_hot(opponent_act_t_ph, num_actions), 
+                                                                logits=opponent_act_pred_logit)
+ 
+
+        weighted_error = tf.reduce_mean(importance_weights_ph * errors + act_pred_error)
+
         # compute optimization op (potentially with gradient clipping)
         if grad_norm_clipping is not None:
             optimize_expr = U.minimize_and_clip(optimizer,
@@ -237,7 +250,8 @@ def build_train(make_obs_ph, q_func, num_actions, optimizer, grad_norm_clipping=
                 rew_t_ph,
                 obs_tp1_input,
                 done_mask_ph,
-                importance_weights_ph
+                importance_weights_ph,
+                opponent_act_t_ph
             ],
             outputs=td_error,
             updates=[optimize_expr]
