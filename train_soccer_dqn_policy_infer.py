@@ -18,7 +18,7 @@ def main():
         exploration_fraction=0.1,
         exploration_final_eps=0.01,
         train_freq=4,
-        learning_starts=10000,
+        learning_starts=50000,
         target_network_update_freq=1000,
         gamma=0.99,
         prioritized_replay=False

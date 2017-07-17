@@ -15,7 +15,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 from baselines import deepq
-from baselines.common.atari_wrappers_deprecated import NoopResetEnv, MaxAndSkipEnv, FrameStack, ClippedRewardsWrapper, ScaledFloatFrame
+from baselines.common.atari_wrappers_deprecated import FrameStack, ScaledFloatFrame
 
 class ProcessSoccerFrame84(gym.ObservationWrapper):
     def __init__(self, env=None):
@@ -28,11 +28,33 @@ class ProcessSoccerFrame84(gym.ObservationWrapper):
     @staticmethod
     def process(frame):
         img = frame
-        img = img[:, :, 0] * 0.299 + img[:, :, 1] * 0.587 + img[:, :, 2] * 0.114
+        img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+        #img = img[:, :, 0] * 0.299 + img[:, :, 1] * 0.587 + img[:, :, 2] * 0.114
         resized_screen = cv2.resize(img, (84, 84), interpolation=cv2.INTER_AREA)
         x_t = resized_screen
         x_t = np.reshape(x_t, [84, 84, 1])
         return x_t.astype(np.uint8)
+
+class SkipEnv(gym.Wrapper):
+    def __init__(self, env=None, skip=4):
+        """Return only every `skip`-th frame"""
+        super(SkipEnv, self).__init__(env)
+        self._skip = skip
+
+    def _step(self, action):
+        total_reward = 0.0
+        done = None
+        for _ in range(self._skip):
+            obs, reward, done, info = self.env.step(action)
+            total_reward += reward
+            if done:
+                break
+        return obs, total_reward, done, info
+
+    def _reset(self):
+        """Clear past frame buffer and init. to first obs. from inner env."""
+        obs = self.env.reset()
+        return obs
 
 class SoccerEnv(gym.Env):
     metadata = {'render.modes': ['human', 'rgb_array']}
@@ -109,10 +131,8 @@ class SoccerEnv(gym.Env):
     def get_action_meanings(self):
         return self.action_meaning 
 
-def wrap_dqn_for_soccer(env):
-    env = NoopResetEnv(env, noop_max=30)
-    env = MaxAndSkipEnv(env, skip=4)
+def wrap_dqn_for_soccer(env, skip=4):
+    env = SkipEnv(env, skip=skip)
     env = ProcessSoccerFrame84(env)
     env = FrameStack(env, 4)
-    env = ClippedRewardsWrapper(env)
     return env
