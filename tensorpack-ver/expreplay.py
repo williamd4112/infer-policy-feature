@@ -258,17 +258,27 @@ class ExpReplay(DataFlow, Callback):
 
 
 if __name__ == '__main__':
-    from .atari import AtariPlayer
     import sys
 
     def predictor(x):
         np.array([1, 1, 1, 1])
-    player = AtariPlayer(sys.argv[1], viz=0, frame_skip=10, height_range=(36, 204))
-    E = ExpReplay(predictor,
-                  player=player,
-                  num_actions=player.get_action_space().num_actions(),
-                  populate_size=1001,
-                  history_len=4)
+    
+    from soccer_env import SoccerPlayer 
+
+    player = SoccerPlayer(image_shape=(84, 84), viz=False, frame_skip=4)
+
+    E = ExpReplay(
+        predictor_io_names=(['state'], ['Qvalue']),
+        player=player,
+        state_shape=(84, 84),
+        batch_size=64,
+        memory_size=1000,
+        init_memory_size=100,
+        init_exploration=1.0,
+        update_frequency=4,
+        history_len=4
+    )
+
     E._init_memory()
 
     for k in E.get_data():

@@ -11,6 +11,7 @@ from collections import deque
 import threading
 import six
 from six.moves import range
+import random
 from tensorpack.utils import (get_rng, logger, execute_only_once)
 from tensorpack.utils.fs import get_dataset_path
 from tensorpack.utils.stats import StatCounter
@@ -34,17 +35,6 @@ class SoccerPlayer(RLEnvironment):
 
     def __init__(self, viz=0, height_range=(None, None),
                  frame_skip=4, image_shape=(84, 84), nullop_start=30, mode=None):
-        """
-        :param frame_skip: skip every k frames and repeat the action
-        :param image_shape: (w, h)
-        :param height_range: (h1, h2) to cut
-        :param viz: visualization to be done.
-            Set to 0 to disable.
-            Set to a positive number to be the delay between frames to show.
-            Set to a string to be a directory to store frames.
-        :param nullop_start: start with random number of null ops
-        :param live_losts_as_eoe: consider lost of lives as end of episode.  useful for training.
-        """
         super(SoccerPlayer, self).__init__()
         self.mode = mode
         self.viz = viz
@@ -79,7 +69,7 @@ class SoccerPlayer(RLEnvironment):
         """
         ret = self._grab_raw_image()
         # max-pooled over the last screen
-        #ret = np.maximum(ret, self.last_raw_screen)
+        ret = np.maximum(ret, self.last_raw_screen)
         '''
         if self.viz:
             if isinstance(self.viz, float):
@@ -103,7 +93,15 @@ class SoccerPlayer(RLEnvironment):
         self.env.reset()
         if self.mode is not None:
             self.env.state.set_computer_agent_mode(self.mode)
+
+        # random null-ops start
+        NULL_OP_ACTION = self.env.actions[4]
+        n = random.randint(0, self.nullop_start)
         self.last_raw_screen = self._grab_raw_image()
+        for k in range(n):
+            if k == n - 1:
+                self.last_raw_screen = self._grab_raw_image()
+            self.env.take_action(NULL_OP_ACTION)
 
     def action(self, act):
         """
@@ -114,8 +112,8 @@ class SoccerPlayer(RLEnvironment):
         for k in range(self.frame_skip):
             if k == self.frame_skip - 1:
                 self.last_raw_screen = self._grab_raw_image()
-            response = self.env.take_action(self.actions[act])
-            r += response.reward
+            ret = self.env.take_action(self.env.actions[act])
+            r += ret.reward
             if self.env.state.is_terminal():
                 break
 
@@ -125,7 +123,6 @@ class SoccerPlayer(RLEnvironment):
             self.finish_episode()
             self.restart_episode()
         return (r, isOver)
-
 
 if __name__ == '__main__':
     import sys
