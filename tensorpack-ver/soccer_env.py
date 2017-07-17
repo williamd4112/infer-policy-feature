@@ -36,7 +36,7 @@ class SoccerPlayer(RLEnvironment):
     COMPUTER_AGENT_IDX = 1
 
     def __init__(self, viz=0, height_range=(None, None),
-                 frame_skip=4, image_shape=(84, 84), nullop_start=30, mode=None, team_size=1):
+                frame_skip=4, image_shape=(84, 84), nullop_start=30, mode=None, team_size=1):
         super(SoccerPlayer, self).__init__()
         self.mode = mode
         self.viz = viz
@@ -101,10 +101,6 @@ class SoccerPlayer(RLEnvironment):
         NULL_OP_ACTION = self.env.actions[4]
         n = random.randint(0, self.nullop_start)
         self.last_raw_screen = self._grab_raw_image()
-        for k in range(n):
-            if k == n - 1:
-                self.last_raw_screen = self._grab_raw_image()
-            self.env.take_action(NULL_OP_ACTION)
 
     def action(self, act):
         """
