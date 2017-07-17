@@ -9,9 +9,9 @@ import baselines.common.tf_util as U
 
 from baselines import logger
 from baselines.common.schedules import LinearSchedule
+from baselines import deepq
+from baselines.deepq.replay_buffer import ReplayBuffer, PrioritizedReplayBuffer
 
-from experiment import deepq_policy_infer
-from data.augment_replay import AugmentReplayBuffer
 
 class ActWrapper(object):
     def __init__(self, act, act_params):
@@ -22,7 +22,7 @@ class ActWrapper(object):
     def load(path, num_cpu=16):
         with open(path, "rb") as f:
             model_data, act_params = dill.load(f)
-        act = deepq_policy_infer.build_act(**act_params)
+        act = deepq.build_act(**act_params)
         sess = U.make_session(num_cpu=num_cpu)
         sess.__enter__()
         with tempfile.TemporaryDirectory() as td:
@@ -169,7 +169,7 @@ def learn(env,
     def make_obs_ph(name):
         return U.BatchInput(env.observation_space.shape, name=name)
 
-    act, train, update_target, debug = deepq_policy_infer.build_train(
+    act, train, update_target, debug = deepq.build_train(
         make_obs_ph=make_obs_ph,
         q_func=q_func,
         num_actions=env.action_space.n,
@@ -185,17 +185,14 @@ def learn(env,
     }
     # Create the replay buffer
     if prioritized_replay:
-        assert False, 'Prioritize Replay has not yet been implemented'
-        '''
         replay_buffer = PrioritizedReplayBuffer(buffer_size, alpha=prioritized_replay_alpha)
         if prioritized_replay_beta_iters is None:
             prioritized_replay_beta_iters = max_timesteps
         beta_schedule = LinearSchedule(prioritized_replay_beta_iters,
                                        initial_p=prioritized_replay_beta0,
                                        final_p=1.0)
-        '''
     else:
-        replay_buffer = AugmentReplayBuffer(buffer_size)
+        replay_buffer = ReplayBuffer(buffer_size)
         beta_schedule = None
     # Create the schedule for exploration starting from 1.
     exploration = LinearSchedule(schedule_timesteps=int(exploration_fraction * max_timesteps),
@@ -218,13 +215,9 @@ def learn(env,
                     break
             # Take action and update exploration to the newest value
             action = act(np.array(obs)[None], update_eps=exploration.value(t))[0]
-            new_obs, rew, done, info = env.step(action)
-            
-            # TODO: Add opponent action
-            opponent_action = info['computer_action']
-
+            new_obs, rew, done, _ = env.step(action)
             # Store transition in the replay buffer.
-            replay_buffer.add(obs, (action, opponent_action), rew, new_obs, float(done))
+            replay_buffer.add(obs, action, rew, new_obs, float(done))
             obs = new_obs
 
             episode_rewards[-1] += rew
@@ -235,21 +228,15 @@ def learn(env,
             if t > learning_starts and t % train_freq == 0:
                 # Minimize the error in Bellman's equation on a batch sampled from replay buffer.
                 if prioritized_replay:
-                    assert False, 'Prioritize Replay has not yet been implemented'
-                    '''
                     experience = replay_buffer.sample(batch_size, beta=beta_schedule.value(t))
                     (obses_t, actions, rewards, obses_tp1, dones, weights, batch_idxes) = experience
-                    '''
                 else:
-                    obses_t, actions, rewards, obses_tp1, dones, opponent_actions = replay_buffer.sample(batch_size)
+                    obses_t, actions, rewards, obses_tp1, dones = replay_buffer.sample(batch_size)
                     weights, batch_idxes = np.ones_like(rewards), None
-                td_errors = train(obses_t, actions, rewards, obses_tp1, dones, np.ones_like(rewards), opponent_actions)
-                if prioritized_replay:                  
-                    assert False, 'Prioritize Replay has not yet been implemented'
-                    '''
+                td_errors = train(obses_t, actions, rewards, obses_tp1, dones, weights)
+                if prioritized_replay:
                     new_priorities = np.abs(td_errors) + prioritized_replay_eps
                     replay_buffer.update_priorities(batch_idxes, new_priorities)
-                    '''
 
             if t > learning_starts and t % target_network_update_freq == 0:
                 # Update target network periodically.

@@ -1,21 +1,19 @@
 from soccer_env import SoccerEnv, wrap_dqn_for_soccer
 
-from baselines import deepq
 from baselines.common.atari_wrappers_deprecated import ScaledFloatFrame
+
+from experiment import deepq
 
 def main():
     env = SoccerEnv(frameskip=1)
     env = ScaledFloatFrame(wrap_dqn_for_soccer(env))
-    model = deepq.models.cnn_to_mlp(
-        convs=[(32, 8, 4), (64, 4, 2), (64, 3, 1)],
-        hiddens=[512],
-        dueling=False
-    )
+    model = deepq.model
 
     act = deepq.learn(
         env,
         q_func=model,
-        lr=1e-4,
+        lr=1e-3,
+        batch_size=64,
         max_timesteps=200000,
         buffer_size=10000,
         exploration_fraction=0.1,

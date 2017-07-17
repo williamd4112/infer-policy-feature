@@ -9,7 +9,7 @@ def main():
     env = SoccerEnv(frameskip=1)
     env = ScaledFloatFrame(wrap_dqn_for_soccer(env))
 
-    act = deepq.load("soccer_model.pkl")
+    act = deepq.load("soccer_model_dqn_vanilla.pkl")
 
     while True:
         obs, done = env.reset(), False

@@ -219,11 +219,10 @@ def build_train(make_obs_ph, q_func, num_actions, optimizer, grad_norm_clipping=
         td_error = q_t_selected - tf.stop_gradient(q_t_selected_target)
         errors = U.huber_loss(td_error)
         
-        # TODO: compute oppponent action prediction error
+        # compute oppponent action prediction error
         act_pred_error = tf.nn.softmax_cross_entropy_with_logits(labels=tf.one_hot(opponent_act_t_ph, num_actions), 
                                                                 logits=opponent_act_pred_logit)
  
-
         weighted_error = tf.reduce_mean(importance_weights_ph * errors + act_pred_error)
 
         # compute optimization op (potentially with gradient clipping)

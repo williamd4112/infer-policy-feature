@@ -11,9 +11,10 @@ def main():
     act = deepq_policy_infer.learn(
         env,
         q_func=model,
-        lr=1e-4,
+        lr=1e-3,
+        batch_size=64,
         max_timesteps=200000,
-        buffer_size=10000,
+        buffer_size=1000000,
         exploration_fraction=0.1,
         exploration_final_eps=0.01,
         train_freq=4,
