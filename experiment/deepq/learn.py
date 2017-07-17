@@ -93,6 +93,7 @@ def learn(env,
           prioritized_replay_beta0=0.4,
           prioritized_replay_beta_iters=None,
           prioritized_replay_eps=1e-6,
+          double_q=False,
           num_cpu=16,
           callback=None):
     """Train a deepq model.
@@ -176,7 +177,7 @@ def learn(env,
         optimizer=tf.train.AdamOptimizer(learning_rate=lr),
         gamma=gamma,
         grad_norm_clipping=10,
-        double_q=False
+        double_q=double_q
     )
     act_params = {
         'make_obs_ph': make_obs_ph,
