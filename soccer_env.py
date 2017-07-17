@@ -15,7 +15,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 from baselines import deepq
-from baselines.common.atari_wrappers_deprecated import FrameStack, ScaledFloatFrame
+from baselines.common.atari_wrappers_deprecated import FrameStack, ScaledFloatFrame, NoopResetEnv, MaxAndSkipEnv, ClippedRewardWrapper
 
 class ProcessSoccerFrame84(gym.ObservationWrapper):
     def __init__(self, env=None):
@@ -27,12 +27,13 @@ class ProcessSoccerFrame84(gym.ObservationWrapper):
 
     @staticmethod
     def process(frame):
-        img = frame
-        img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-        #img = img[:, :, 0] * 0.299 + img[:, :, 1] * 0.587 + img[:, :, 2] * 0.114
+        img = frame.astype(np.float32)
+        img = img[:, :, 0] * 0.299 + img[:, :, 1] * 0.587 + img[:, :, 2] * 0.114
         resized_screen = cv2.resize(img, (84, 84), interpolation=cv2.INTER_AREA)
         x_t = resized_screen
         x_t = np.reshape(x_t, [84, 84, 1])
+        cv2.imwrite('img_t.png', resized_screen.astype(np.uint8))
+        cv2.imwrite('x_t.png', x_t.astype(np.uint8))
         return x_t.astype(np.uint8)
 
 class SkipEnv(gym.Wrapper):
@@ -132,7 +133,10 @@ class SoccerEnv(gym.Env):
         return self.action_meaning 
 
 def wrap_dqn_for_soccer(env, skip=4):
-    env = SkipEnv(env, skip=skip)
+    env = NoopResetEnv(env, noop_max=30)
+    env = MaxAndSkipEnv(env, skip=skip)
     env = ProcessSoccerFrame84(env)
     env = FrameStack(env, 4)
+    env = ClippedRewardsWrapper(env)
+
     return env
