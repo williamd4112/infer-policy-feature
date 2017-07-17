@@ -33,8 +33,10 @@ class SoccerPlayer(RLEnvironment):
     SOCCER_WIDTH = 288
     SOCCER_HEIGHT = 192
 
+    COMPUTER_AGENT_IDX = 1
+
     def __init__(self, viz=0, height_range=(None, None),
-                 frame_skip=4, image_shape=(84, 84), nullop_start=30, mode=None):
+                 frame_skip=4, image_shape=(84, 84), nullop_start=30, mode=None, team_size=1):
         super(SoccerPlayer, self).__init__()
         self.mode = mode
         self.viz = viz
@@ -43,7 +45,8 @@ class SoccerPlayer(RLEnvironment):
                 show_display=True, max_fps=10, enable_key_events=True)
         else:
             self.renderer_options = None
-        self.env = soccer_environment.SoccerEnvironment(self.renderer_options)
+        self.env_options = soccer_environment.SoccerEnvironmentOptions(team_size=1)
+        self.env = soccer_environment.SoccerEnvironment(options=self.env_options, renderer_options=self.renderer_options)
         self.width, self.height = self.SOCCER_WIDTH, self.SOCCER_HEIGHT
         self.actions = self.env.actions
 
@@ -92,7 +95,7 @@ class SoccerPlayer(RLEnvironment):
         self.current_episode_score.reset()
         self.env.reset()
         if self.mode is not None:
-            self.env.state.set_computer_agent_mode(self.mode)
+            self.env.state.set_agent_mode(self.COMPUTER_AGENT_IDX, self.mode)
 
         # random null-ops start
         NULL_OP_ACTION = self.env.actions[4]
@@ -123,6 +126,12 @@ class SoccerPlayer(RLEnvironment):
             self.finish_episode()
             self.restart_episode()
         return (r, isOver)
+
+    def get_internal_state(self):
+        info = {}
+        opponent_act = self.env.state.get_agent_action(self.COMPUTER_AGENT_IDX)
+        info['opponent_action'] = self.env.actions.index(opponent_act if opponent_act else 'STAND')
+        return info        
 
 if __name__ == '__main__':
     import sys
