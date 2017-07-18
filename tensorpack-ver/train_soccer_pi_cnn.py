@@ -27,6 +27,8 @@ from common import play_model, Evaluator, eval_model_multithread
 from soccer_env import SoccerPlayer
 from augment_expreplay import AugmentExpReplay
 
+from pi_trainer import *
+
 BATCH_SIZE = 64
 IMAGE_SIZE = (84, 84)
 FRAME_HISTORY = 4
@@ -65,46 +67,36 @@ class Model(DQNModel):
     def _get_DQN_prediction(self, image):
         """ image: [0,255]"""
         image = image / 255.0
-        with argscope(Conv2D, nl=PReLU.symbolic_function, use_bias=True), \
-                argscope(LeakyReLU, alpha=0.01):
-            l = (LinearWrap(image)
-                 # Nature architecture
-                 .Conv2D('conv0', out_channel=32, kernel_shape=8, stride=4)
-                 .Conv2D('conv1', out_channel=64, kernel_shape=4, stride=2)
-                 .Conv2D('conv2', out_channel=64, kernel_shape=3)
 
-                 # architecture used for the figure in the README, slower but takes fewer iterations to converge
-                 # .Conv2D('conv0', out_channel=32, kernel_shape=5)
-                 # .MaxPooling('pool0', 2)
-                 # .Conv2D('conv1', out_channel=32, kernel_shape=5)
-                 # .MaxPooling('pool1', 2)
-                 # .Conv2D('conv2', out_channel=64, kernel_shape=4)
-                 # .MaxPooling('pool2', 2)
-                 # .Conv2D('conv3', out_channel=64, kernel_shape=3)
+        with tf.variable_scope('q'):
+            with argscope(Conv2D, nl=PReLU.symbolic_function, use_bias=True), \
+                    argscope(LeakyReLU, alpha=0.01):
+                l = (LinearWrap(image)
+                     # Nature architecture
+                     .Conv2D('conv0', out_channel=32, kernel_shape=8, stride=4)
+                     .Conv2D('conv1', out_channel=64, kernel_shape=4, stride=2)
+                     .Conv2D('conv2', out_channel=64, kernel_shape=3)
 
-                 .FullyConnected('fc0', 512, nl=LeakyReLU)())
+                     # architecture used for the figure in the README, slower but takes fewer iterations to converge
+                     # .Conv2D('conv0', out_channel=32, kernel_shape=5)
+                     # .MaxPooling('pool0', 2)
+                     # .Conv2D('conv1', out_channel=32, kernel_shape=5)
+                     # .MaxPooling('pool1', 2)
+                     # .Conv2D('conv2', out_channel=64, kernel_shape=4)
+                     # .MaxPooling('pool2', 2)
+                     # .Conv2D('conv3', out_channel=64, kernel_shape=3)
 
-        with argscope(Conv2D, nl=tf.nn.relu):
-            '''
-            l = Conv2D(l, [6, 6], 64, 2, 'VALID', 'conv0')
-            l = ReLu(l, 'relu0')
-            l = Conv2D(l, [6, 6], 64, 2, 'SAME', 'conv1')
-            l = ReLu(l, 'relu1')
-            l = Conv2D(l, [6, 6], 64, 2, 'SAME', 'conv2')
-            l = ReLu(l, 'relu2')
+                     .FullyConnected('fc0', 512, nl=LeakyReLU)())
 
-            l = FC(l, 1024, 'fc0')
-            l = ReLu(l, 'relu3')
-            h = FC(l, 512, 'fc1', initializer=tf.random_uniform_initializer(minval=-1.0, maxval=1.0))
+        with tf.variable_scope('pi'):
+            with argscope(Conv2D, nl=tf.nn.relu):
+                    pi_l = Conv2D('pi-conv0', image, out_channel=64, kernel_shape=6, stride=2, padding='VALID')
+                    pi_l = Conv2D('pi-conv1', pi_l, out_channel=64, kernel_shape=6, stride=2, padding='SAME')
+                    pi_l = Conv2D('pi-conv2', pi_l, out_channel=64, kernel_shape=6, stride=2, padding='SAME')
+                    pi_l = FullyConnected('pi-fc0', pi_l, 1024, nl=tf.nn.relu)
+                    pi_h = FullyConnected('pi-fc1', pi_l, 512, nl=tf.nn.relu) 
+            pi_y = FullyConnected('pi-fc2', pi_h, self.num_actions, nl=tf.identity)
 
-            y = FC(h, self.num_action, 'fc2')
-            '''
-            pi_l = Conv2D('pi-conv0', image, out_channel=64, kernel_shape=6, stride=2, padding='VALID')
-            pi_l = Conv2D('pi-conv1', pi_l, out_channel=64, kernel_shape=6, stride=2, padding='SAME')
-            pi_l = Conv2D('pi-conv2', pi_l, out_channel=64, kernel_shape=6, stride=2, padding='SAME')
-            pi_l = FullyConnected('pi-fc0', pi_l, 1024, nl=tf.nn.relu)
-            pi_h = FullyConnected('pi-fc1', pi_l, 512, nl=tf.nn.relu) 
-        pi_y = FullyConnected('pi-fc2', pi_h, self.num_actions, nl=tf.identity)
         l = tf.concat([l, pi_h], axis=1) 
         
         if self.method != 'Dueling':
@@ -114,8 +106,8 @@ class Model(DQNModel):
             V = FullyConnected('fctV', l, 1, nl=tf.identity)
             As = FullyConnected('fctA', l, self.num_actions, nl=tf.identity)
             Q = tf.add(As, V - tf.reduce_mean(As, 1, keep_dims=True))
-        return tf.identity(Q, name='Qvalue'), tf.identity(pi_y, name='Pivalue')
 
+        return tf.identity(Q, name='Qvalue'), tf.identity(pi_y, name='Pivalue')
 
 def get_config():
     M = Model()
@@ -190,4 +182,4 @@ if __name__ == '__main__':
         config = get_config()
         if args.load:
             config.session_init = SaverRestore(args.load)
-        QueueInputTrainer(config).train()
+        QueueInputPiTrainer(config).train()
