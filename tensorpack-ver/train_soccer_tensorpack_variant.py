@@ -21,11 +21,11 @@ from tensorpack.utils.concurrency import *
 from tensorpack.RL import *
 import tensorflow as tf
 
-from DQNPIModel import Model as DQNModel
+from DQNModel import Model as DQNModel
 import common
 from common import play_model, Evaluator, eval_model_multithread
 from soccer_env import SoccerPlayer
-from augment_expreplay import AugmentExpReplay
+from expreplay import ExpReplay
 
 BATCH_SIZE = 64
 IMAGE_SIZE = (84, 84)
@@ -54,7 +54,7 @@ def get_player(viz=False, train=False):
         pl = HistoryFramePlayer(pl, FRAME_HISTORY)
 
         pl = PreventStuckPlayer(pl, 30, 1)
-    #pl = LimitLengthPlayer(pl, 30000)
+    pl = LimitLengthPlayer(pl, 30000)
     return pl
 
 
@@ -69,44 +69,20 @@ class Model(DQNModel):
                 argscope(LeakyReLU, alpha=0.01):
             l = (LinearWrap(image)
                  # Nature architecture
-                 .Conv2D('conv0', out_channel=32, kernel_shape=8, stride=4)
-                 .Conv2D('conv1', out_channel=64, kernel_shape=4, stride=2)
-                 .Conv2D('conv2', out_channel=64, kernel_shape=3)
+                 #.Conv2D('conv0', out_channel=32, kernel_shape=8, stride=4)
+                 #.Conv2D('conv1', out_channel=64, kernel_shape=4, stride=2)
+                 #.Conv2D('conv2', out_channel=64, kernel_shape=3)
 
                  # architecture used for the figure in the README, slower but takes fewer iterations to converge
-                 #.Conv2D('conv0', out_channel=32, kernel_shape=5)
-                 #.MaxPooling('pool0', 2)
-                 #.Conv2D('conv1', out_channel=32, kernel_shape=5)
-                 #.MaxPooling('pool1', 2)
-                 #.Conv2D('conv2', out_channel=64, kernel_shape=4)
-                 #.MaxPooling('pool2', 2)
-                 #.Conv2D('conv3', out_channel=64, kernel_shape=3)
+                 .Conv2D('conv0', out_channel=32, kernel_shape=5)
+                 .MaxPooling('pool0', 2)
+                 .Conv2D('conv1', out_channel=32, kernel_shape=5)
+                 .MaxPooling('pool1', 2)
+                 .Conv2D('conv2', out_channel=64, kernel_shape=4)
+                 .MaxPooling('pool2', 2)
+                 .Conv2D('conv3', out_channel=64, kernel_shape=3)
 
                  .FullyConnected('fc0', 512, nl=LeakyReLU)())
-
-        with argscope(Conv2D, nl=PReLU.symbolic_function, use_bias=True), \
-                argscope(LeakyReLU, alpha=0.01):
-            pi_l = (LinearWrap(image)
-                 # Nature architecture
-                 .Conv2D('pi-conv0', out_channel=32, kernel_shape=8, stride=4)
-                 .Conv2D('pi-conv1', out_channel=64, kernel_shape=4, stride=2)
-                 .Conv2D('pi-conv2', out_channel=64, kernel_shape=3)
-
-                 # architecture used for the figure in the README, slower but takes fewer iterations to converge
-                 #.Conv2D('conv0', out_channel=32, kernel_shape=5)
-                 #.MaxPooling('pool0', 2)
-                 #.Conv2D('conv1', out_channel=32, kernel_shape=5)
-                 #.MaxPooling('pool1', 2)
-                 #.Conv2D('conv2', out_channel=64, kernel_shape=4)
-                 #.MaxPooling('pool2', 2)
-                 #.Conv2D('conv3', out_channel=64, kernel_shape=3)
-
-                 .FullyConnected('pi-fc0', 512, nl=LeakyReLU)())
-
-        pi_y = FullyConnected('pi-fc1', pi_l, self.num_actions, nl=tf.identity)
-
-        l = tf.concat([l, pi_l], axis=1) 
-        
         if self.method != 'Dueling':
             Q = FullyConnected('fct', l, self.num_actions, nl=tf.identity)
         else:
@@ -114,12 +90,12 @@ class Model(DQNModel):
             V = FullyConnected('fctV', l, 1, nl=tf.identity)
             As = FullyConnected('fctA', l, self.num_actions, nl=tf.identity)
             Q = tf.add(As, V - tf.reduce_mean(As, 1, keep_dims=True))
-        return tf.identity(Q, name='Qvalue'), tf.identity(pi_y, name='Pivalue')
+        return tf.identity(Q, name='Qvalue')
 
 
 def get_config():
     M = Model()
-    expreplay = AugmentExpReplay(
+    expreplay = ExpReplay(
         predictor_io_names=(['state'], ['Qvalue']),
         player=get_player(train=True),
         state_shape=IMAGE_SIZE,
