@@ -75,7 +75,7 @@ class Model(DQNModel):
                      # Nature architecture
                      .Conv2D('conv0', out_channel=32, kernel_shape=8, stride=4)
                      .Conv2D('conv1', out_channel=64, kernel_shape=4, stride=2)
-                     .Conv2D('conv2', out_channel=64, kernel_shape=3))()
+                     .Conv2D('conv2', out_channel=64, kernel_shape=3)
 
                      # architecture used for the figure in the README, slower but takes fewer iterations to converge
                      # .Conv2D('conv0', out_channel=32, kernel_shape=5)
@@ -86,21 +86,18 @@ class Model(DQNModel):
                      # .MaxPooling('pool2', 2)
                      # .Conv2D('conv3', out_channel=64, kernel_shape=3)
                     
-                     #.FullyConnected('fc0', 512, nl=LeakyReLU)())
-            q_l = symbf.batch_flatten(q_l)
+                     .FullyConnected('fc0', 512, nl=LeakyReLU)())
 
         with tf.variable_scope('pi'):
             with argscope(Conv2D, nl=tf.nn.relu):
                     pi_l = Conv2D('conv0', image, out_channel=64, kernel_shape=6, stride=2, padding='VALID')
                     pi_l = Conv2D('conv1', pi_l, out_channel=64, kernel_shape=6, stride=2, padding='SAME')
                     pi_l = Conv2D('conv2', pi_l, out_channel=64, kernel_shape=6, stride=2, padding='SAME')
-                    pi_h = symbf.batch_flatten(pi_l)
-            pi_y = FullyConnected('fc0', pi_h, 1024, nl=tf.nn.relu)
-            pi_y = FullyConnected('fc1', pi_y, 512, nl=tf.nn.relu) 
-            pi_y = FullyConnected('fc2', pi_y, self.num_actions, nl=tf.identity)
+            pi_l = FullyConnected('fc0', pi_l, 1024, nl=tf.nn.relu)
+            pi_h = FullyConnected('fc1', pi_l, 512) 
+            pi_y = FullyConnected('fc2', pi_h, self.num_actions, nl=tf.identity)
 
         l = tf.concat([q_l, pi_h], axis=1)
-        l = FullyConnected('fc0', l, 512, nl=tf.nn.relu) 
         
         if self.method != 'Dueling':
             Q = FullyConnected('fct', l, self.num_actions, nl=tf.identity)

@@ -129,7 +129,7 @@ class SoccerPlayer(RLEnvironment):
 
     def get_internal_state(self):
         info = {}
-        opponent_act = self.env.state.get_agent_action(self.COMPUTER_AGENT_IDX)
+        opponent_act = self.env.state.get_agent_action(self.computer_agent_index)
         info['opponent_action'] = self.env.actions.index(opponent_act if opponent_act else 'STAND')
         return info        
 
