@@ -71,11 +71,11 @@ class Model(DQNModel):
         with tf.variable_scope('q'):
             with argscope(Conv2D, nl=PReLU.symbolic_function, use_bias=True), \
                     argscope(LeakyReLU, alpha=0.01):
-                l = (LinearWrap(image)
+                q_l = (LinearWrap(image)
                      # Nature architecture
                      .Conv2D('conv0', out_channel=32, kernel_shape=8, stride=4)
                      .Conv2D('conv1', out_channel=64, kernel_shape=4, stride=2)
-                     .Conv2D('conv2', out_channel=64, kernel_shape=3))
+                     .Conv2D('conv2', out_channel=64, kernel_shape=3))()
 
                      # architecture used for the figure in the README, slower but takes fewer iterations to converge
                      # .Conv2D('conv0', out_channel=32, kernel_shape=5)
@@ -87,6 +87,7 @@ class Model(DQNModel):
                      # .Conv2D('conv3', out_channel=64, kernel_shape=3)
                     
                      #.FullyConnected('fc0', 512, nl=LeakyReLU)())
+            q_l = symbf.batch_flatten(q_l)
 
         with tf.variable_scope('pi'):
             with argscope(Conv2D, nl=tf.nn.relu):
@@ -98,7 +99,7 @@ class Model(DQNModel):
             pi_y = FullyConnected('fc1', pi_y, 512, nl=tf.nn.relu) 
             pi_y = FullyConnected('fc2', pi_y, self.num_actions, nl=tf.identity)
 
-        l = tf.concat([l, pi_h], axis=1)
+        l = tf.concat([q_l, pi_h], axis=1)
         l = FullyConnected('fc0', l, 512, nl=tf.nn.relu) 
         
         if self.method != 'Dueling':

@@ -74,14 +74,13 @@ class Model(ModelDesc):
 
         target = reward + (1.0 - tf.cast(isOver, tf.float32)) * self.gamma * tf.stop_gradient(best_v)
         
-        q_cost = (symbf.huber_loss(target - pred_action_value))
-        pi_cost = (tf.nn.softmax_cross_entropy_with_logits(labels=action_o_one_hot, logits=pi_value))
-        self.cost = tf.reduce_mean(q_cost + pi_cost)
+        self.q_cost = tf.reduce_mean(symbf.huber_loss(target - pred_action_value), name='q_cost')
+        self.pi_cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=action_o_one_hot, logits=pi_value, name='pi_cost'))
 
         summary.add_param_summary(('conv.*/W', ['histogram', 'rms']),
                                   ('fc.*/W', ['histogram', 'rms']))   # monitor all W
-        summary.add_moving_summary(self.cost)
-
+        summary.add_moving_summary(self.q_cost)
+        summary.add_moving_summary(self.pi_cost)
 
     def _get_optimizer(self):
         lr = symbf.get_scalar_var('learning_rate', 1e-3, summary=True)
@@ -101,5 +100,40 @@ class Model(ModelDesc):
                 logger.info("{} <- {}".format(target_name, new_name))
                 ops.append(v.assign(G.get_tensor_by_name(new_name + ':0')))
         return tf.group(*ops, name='update_target_network')
+
+    def get_q_cost(self):
+        return self.q_cost
+
+    def get_pi_cost(self):
+        return self.pi_cost
+
+    def _get_cost_and_grad(self):
+        def _get_vars_by_scope(varlist, prefix):
+            return [v for v in varlist if v.op.name.startswith(prefix)]
+
+        ctx = get_current_tower_context()
+        assert ctx is not None and ctx.is_training, ctx
+
+        opt = self.get_optimizer()
+
+        # produce gradients for q
+        q_cost = self.get_q_cost()
+        q_varlist = _get_vars_by_scope(tf.trainable_variables(), 'q')
+        assert q_varlist
+        q_grads = opt.compute_gradients(
+            q_cost, var_list=q_varlist,
+            gate_gradients=False, colocate_gradients_with_ops=True)
+        q_grads = FilterNoneGrad().process(q_grads)
+        
+        # produce gradients for pi
+        pi_cost = self.get_pi_cost()
+        pi_varlist = _get_vars_by_scope(tf.trainable_variables(), 'pi')
+        assert pi_varlist
+        pi_grads = opt.compute_gradients(
+            pi_cost, var_list=pi_varlist,
+            gate_gradients=False, colocate_gradients_with_ops=True)
+        pi_grads = FilterNoneGrad().process(pi_grads)
+
+        return (q_cost, q_grads), (pi_cost, pi_grads)
 
 

@@ -33,20 +33,24 @@ class SoccerPlayer(RLEnvironment):
     SOCCER_WIDTH = 288
     SOCCER_HEIGHT = 192
 
-    COMPUTER_AGENT_IDX = 1
-
     def __init__(self, viz=0, height_range=(None, None),
                 frame_skip=4, image_shape=(84, 84), nullop_start=30, mode=None, team_size=1):
         super(SoccerPlayer, self).__init__()
         self.mode = mode
+
         self.viz = viz
         if self.viz:
             self.renderer_options = soccer_renderer.RendererOptions(
                 show_display=True, max_fps=10, enable_key_events=True)
         else:
             self.renderer_options = None
+        
         self.env_options = soccer_environment.SoccerEnvironmentOptions(team_size=1)
-        self.env = soccer_environment.SoccerEnvironment(options=self.env_options, renderer_options=self.renderer_options)
+        self.env = soccer_environment.SoccerEnvironment(env_options=self.env_options, renderer_options=self.renderer_options)
+
+        self.computer_team_name = self.env.team_names[1]
+        self.computer_agent_index = self.env.get_agent_index(self.computer_team_name, 0)
+
         self.width, self.height = self.SOCCER_WIDTH, self.SOCCER_HEIGHT
         self.actions = self.env.actions
 
@@ -72,7 +76,7 @@ class SoccerPlayer(RLEnvironment):
         """
         ret = self._grab_raw_image()
         # max-pooled over the last screen
-        ret = np.maximum(ret, self.last_raw_screen)
+        #ret = np.maximum(ret, self.last_raw_screen)
         '''
         if self.viz:
             if isinstance(self.viz, float):
@@ -95,7 +99,7 @@ class SoccerPlayer(RLEnvironment):
         self.current_episode_score.reset()
         self.env.reset()
         if self.mode is not None:
-            self.env.state.set_agent_mode(self.COMPUTER_AGENT_IDX, self.mode)
+            self.env.state.set_agent_mode(self.computer_agent_index, self.mode)
 
         # random null-ops start
         NULL_OP_ACTION = self.env.actions[4]
