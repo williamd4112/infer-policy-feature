@@ -85,7 +85,7 @@ def eval_with_funcs(predictors, nr_eval, get_player_fn):
 
 
 def eval_model_multithread(cfg, nr_eval, get_player_fn):
-    nr_eval = 100
+    nr_eval = 1000
     predfunc = OfflinePredictor(cfg)
     player = get_player_fn()
     scores = []
