@@ -85,11 +85,21 @@ def eval_with_funcs(predictors, nr_eval, get_player_fn):
 
 
 def eval_model_multithread(cfg, nr_eval, get_player_fn):
+    nr_eval = 100
+    predfunc = OfflinePredictor(cfg)
+    player = get_player_fn()
+    scores = []
+    for ep in range(nr_eval):
+        scores.append(play_one_episode(player, predfunc))
+        print("Epsiode %d:" % ep, scores[-1])
+    scores = np.array(scores)
+    print('Over %d episodes, Max: %f, Min: %f, Mean: %f' % (nr_eval, scores.max(), scores.min(), scores.mean()))
+    '''
     func = OfflinePredictor(cfg)
     NR_PROC = min(multiprocessing.cpu_count() // 2, 8)
     mean, max = eval_with_funcs([func] * NR_PROC, nr_eval, get_player_fn)
     logger.info("Average Score: {}; Max Score: {}".format(mean, max))
-
+    '''
 
 class Evaluator(Triggerable):
     def __init__(self, nr_eval, input_names, output_names, get_player_fn):

@@ -46,7 +46,6 @@ EVAL_EPISODE = 50
 NUM_ACTIONS = None
 METHOD = None
 
-
 def get_player(viz=False, train=False):
     pl = SoccerPlayer(image_shape=IMAGE_SIZE[::-1], viz=viz, frame_skip=ACTION_REPEAT)
     if not train:
