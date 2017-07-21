@@ -20,6 +20,7 @@ from tensorpack.RL.envbase import RLEnvironment, DiscreteActionSpace
 
 import pygame_soccer.soccer.soccer_environment as soccer_environment
 import pygame_soccer.soccer.soccer_renderer as soccer_renderer
+import pygame_soccer.util.file_util as file_util
 
 __all__ = ['SoccerPlayer']
 
@@ -33,19 +34,24 @@ class SoccerPlayer(RLEnvironment):
     SOCCER_WIDTH = 288
     SOCCER_HEIGHT = 192
 
-    def __init__(self, viz=0, height_range=(None, None),
+    def __init__(self, viz=0, height_range=(None, None), field=None,
                 frame_skip=4, image_shape=(84, 84), nullop_start=30, mode=None, team_size=1):
         super(SoccerPlayer, self).__init__()
         self.mode = mode
-
+        self.field = field
         self.viz = viz
         if self.viz:
             self.renderer_options = soccer_renderer.RendererOptions(
                 show_display=True, max_fps=10, enable_key_events=True)
         else:
             self.renderer_options = None
-        
-        self.env_options = soccer_environment.SoccerEnvironmentOptions(team_size=1)
+
+        if self.field == 'large' :
+            map_path = file_util.resolve_path(__file__, 'data/map/soccer_large.tmx')
+        else :
+            map_path = None
+
+        self.env_options = soccer_environment.SoccerEnvironmentOptions(team_size=1, map_path=map_path)
         self.env = soccer_environment.SoccerEnvironment(env_options=self.env_options, renderer_options=self.renderer_options)
 
         self.computer_team_name = self.env.team_names[1]
@@ -131,7 +137,7 @@ class SoccerPlayer(RLEnvironment):
         info = {}
         opponent_act = self.env.state.get_agent_action(self.computer_agent_index)
         info['opponent_action'] = self.env.actions.index(opponent_act if opponent_act else 'STAND')
-        return info        
+        return info
 
 if __name__ == '__main__':
     import sys
