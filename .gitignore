@@ -1,2 +1,5 @@
 *.pyc
 *.sw*
+tensorpack-ver/__pycache__
+tensorpack-ver/train_log
+*.pkl

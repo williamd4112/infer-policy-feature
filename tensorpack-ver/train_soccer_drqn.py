@@ -181,7 +181,7 @@ if __name__ == '__main__':
             eval_model_multithread(cfg, EVAL_EPISODE, get_player)
     else:
         logger.set_logger_dir(
-            os.path.join('train_log', 'DQN-{}'.format(
+            os.path.join('train_log', 'DRQN-{}'.format(
                 os.path.basename('soccer').split('.')[0])))
         config = get_config()
         if args.load:
