@@ -28,7 +28,7 @@ __all__ = ['PartialObserveSoccerPlayer']
 
 class PartialObserveSoccerPlayer(SoccerPlayer):
     def __init__(self, viz=0, height_range=(None, None), field=None, 
-                frame_skip=4, image_shape=(84, 84), nullop_start=30, mode=None, team_size=1, radius):
+                frame_skip=4, image_shape=(84, 84), nullop_start=30, mode=None, team_size=1, radius=2):
         super(PartialObserveSoccerPlayer, self).__init__(viz, height_range, field, frame_skip, image_shape, nullop_start, mode, team_size)
         
         self.radius = radius

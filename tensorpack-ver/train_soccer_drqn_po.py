@@ -25,7 +25,7 @@ import tensorflow as tf
 from DQNModel import Model as DQNModel
 import common
 from common import play_model, Evaluator, eval_model_multithread
-from soccer_env import SoccerPlayer
+from po_soccer_env import PartialObserveSoccerPlayer as SoccerPlayer
 from expreplay import ExpReplay
 
 BATCH_SIZE = 16
