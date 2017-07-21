@@ -22,15 +22,15 @@ from tensorpack.tfutils import symbolic_functions as symbf
 from tensorpack.RL import *
 import tensorflow as tf
 
-from DRQNModel import Model as DQNModel
+from DQNModel import Model as DQNModel
 import common
 from common import play_model, Evaluator, eval_model_multithread
 from soccer_env import SoccerPlayer
-from episode_expreplay import ExpReplay
+from expreplay import ExpReplay
 
 BATCH_SIZE = 16
 IMAGE_SIZE = (84, 84)
-FRAME_HISTORY = 16
+FRAME_HISTORY = 32
 ACTION_REPEAT = 1   # aka FRAME_SKIP
 UPDATE_FREQ = 4
 
@@ -38,7 +38,7 @@ GAMMA = 0.99
 
 MEMORY_SIZE = 1e6
 # will consume at least 1e6 * 84 * 84 bytes == 6.6G memory.
-INIT_MEMORY_SIZE = 5e4
+INIT_MEMORY_SIZE = 50000
 STEPS_PER_EPOCH = 10000 // UPDATE_FREQ * 10  # each epoch is 100k played frames
 EVAL_EPISODE = 50
 
@@ -60,11 +60,15 @@ def get_player(viz=False, train=False):
 
 class Model(DQNModel):
     def __init__(self):
-        super(Model, self).__init__(IMAGE_SIZE, FRAME_HISTORY, METHOD, NUM_ACTIONS, GAMMA, BATCH_SIZE)
+        super(Model, self).__init__(IMAGE_SIZE, FRAME_HISTORY, METHOD, NUM_ACTIONS, GAMMA)
 
     def _get_DQN_prediction(self, image):
         """ image: [0,255]"""
+        self.batch_size = tf.shape(image)[0]
         image = image / 255.0
+        image = tf.transpose(image, perm=[0, 3, 1, 2])
+        image = tf.reshape(image, (self.batch_size * self.channel,) + self.image_shape + (1,))
+
         with argscope(Conv2D, nl=PReLU.symbolic_function, use_bias=True), \
                 argscope(LeakyReLU, alpha=0.01):
             l = (LinearWrap(image)
@@ -86,19 +90,19 @@ class Model(DQNModel):
                  # .FullyConnected('fc0', 512, nl=LeakyReLU)())
             l = symbf.batch_flatten(l)
 
-            # TODO: Add recurrent part
+            # TODO: Add recurrent part 
             h_size = 512
             l = tf.reshape(l, [self.batch_size, self.channel, h_size])
-       
-            cell = tf.nn.rnn_cell.LSTMCell(num_units=h_size, state_is_tuple=True)
-           
-            #self.state_in = cell.zero_state(self.batch_size, tf.float32)
-            self.state_in = None
-            self.rnn, self.rnn_state = tf.nn.dynamic_rnn(
-                inputs=l, cell=cell, dtype=tf.float32, initial_state=self.state_in, scope='rnn0')
-            self.rnn = tf.reshape(self.rnn, shape=[-1, h_size])
-            l = self.rnn
- 
+
+            cell = tf.nn.rnn_cell.LSTMCell(num_units=h_size, 
+                                        state_is_tuple=True)
+            self.state_in = cell.zero_state(self.batch_size, tf.float32)
+            #self.state_in = None
+         
+            l, self.rnn_state = tf.nn.dynamic_rnn(
+                inputs=l, cell=cell, dtype=tf.float32, initial_state=self.state_in, scope='rnn')
+            l = l[:, -1, :] 
+              
         if self.method != 'Dueling':
             Q = FullyConnected('fct', l, self.num_actions, nl=tf.identity)
         else:
@@ -106,7 +110,6 @@ class Model(DQNModel):
             V = FullyConnected('fctV', l, 1, nl=tf.identity)
             As = FullyConnected('fctA', l, self.num_actions, nl=tf.identity)
             Q = tf.add(As, V - tf.reduce_mean(As, 1, keep_dims=True))
-
         return tf.identity(Q, name='Qvalue')
 
 
