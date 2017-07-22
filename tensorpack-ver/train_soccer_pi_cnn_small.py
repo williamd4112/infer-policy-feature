@@ -30,7 +30,7 @@ from augment_expreplay import AugmentExpReplay
 BATCH_SIZE = 64
 IMAGE_SIZE = (84, 84)
 FRAME_HISTORY = 4
-ACTION_REPEAT = 4   # aka FRAME_SKIP
+ACTION_REPEAT = 1   # aka FRAME_SKIP
 UPDATE_FREQ = 4
 
 GAMMA = 0.99
@@ -105,7 +105,7 @@ class Model(DQNModel):
 
         pi_y = FullyConnected('pi-fc1', pi_l, self.num_actions, nl=tf.identity)
 
-        l = tf.concat([l, pi_l], axis=1) 
+        l = tf.multiply(l, pi_l) 
         
         if self.method != 'Dueling':
             Q = FullyConnected('fct', l, self.num_actions, nl=tf.identity)

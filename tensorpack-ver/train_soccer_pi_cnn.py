@@ -32,7 +32,7 @@ from tensorpack.tfutils import symbolic_functions as symbf
 BATCH_SIZE = 64
 IMAGE_SIZE = (84, 84)
 FRAME_HISTORY = 4
-ACTION_REPEAT = 4   # aka FRAME_SKIP
+ACTION_REPEAT = 1   # aka FRAME_SKIP
 UPDATE_FREQ = 4
 
 GAMMA = 0.99
@@ -96,7 +96,7 @@ class Model(DQNModel):
             pi_h = FullyConnected('fc1', pi_l, 512) 
             pi_y = FullyConnected('fc2', pi_h, self.num_actions, nl=tf.identity)
 
-        l = tf.concat([q_l, pi_h], axis=1)
+        l = tf.multiply(q_l, pi_h)
         
         if self.method != 'Dueling':
             Q = FullyConnected('fct', l, self.num_actions, nl=tf.identity)
