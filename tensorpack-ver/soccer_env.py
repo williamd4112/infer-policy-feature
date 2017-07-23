@@ -34,8 +34,12 @@ class SoccerPlayer(RLEnvironment):
     SOCCER_WIDTH = 288
     SOCCER_HEIGHT = 192
 
-    def __init__(self, viz=0, height_range=(None, None), field=None, partial=False, radius=2,
-                frame_skip=4, image_shape=(84, 84), nullop_start=30, mode=None, team_size=1):
+    def __init__(self, viz=0, 
+                height_range=(None, None), 
+                field=None, partial=False, radius=2,
+                frame_skip=4, 
+                image_shape=(84, 84), 
+                nullop_start=30, mode=None, team_size=1):
         super(SoccerPlayer, self).__init__()
         self.mode = mode
         self.field = field
@@ -117,9 +121,6 @@ class SoccerPlayer(RLEnvironment):
         if self.mode is not None:
             self.env.state.set_agent_mode(self.computer_agent_index, self.mode)
 
-        # random null-ops start
-        NULL_OP_ACTION = self.env.actions[4]
-        n = random.randint(0, self.nullop_start)
         self.last_raw_screen = self._grab_raw_image()
 
     def action(self, act):
@@ -149,3 +150,14 @@ class SoccerPlayer(RLEnvironment):
         info['opponent_action'] = self.env.actions.index(opponent_act if opponent_act else 'STAND')
         return info
 
+class SoccerPlayerWithInternalState(SoccerPlayer):
+    def current_state(self):
+        img = self._grab_raw_image()
+        img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+        img = cv2.resize(img, self.image_shape)
+        
+        # Last action (a_t_1)
+        act = self.get_internal_state()['opponent_action']
+
+        return (ret.astype('uint8'), act)  # to save some memory
+     
