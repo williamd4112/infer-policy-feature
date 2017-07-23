@@ -77,7 +77,7 @@ class Model(ModelDesc):
         q_cost = (symbf.huber_loss(target - pred_action_value))
         #pi_cost = (tf.nn.softmax_cross_entropy_with_logits(labels=action_o_one_hot, logits=pi_value))
         lp_cost = symbf.huber_loss(lp_value - tf.reduce_mean(-self.predict_value, axis=1, keep_dims=True))
-        self.cost = tf.reduce_mean(q_cost + lp_cost, name='cost')
+        self.cost = tf.reduce_mean(q_cost + 0.001 * lp_cost, name='cost')
 
         summary.add_param_summary(('conv.*/W', ['histogram', 'rms']),
                                   ('fc.*/W', ['histogram', 'rms']))   # monitor all W
