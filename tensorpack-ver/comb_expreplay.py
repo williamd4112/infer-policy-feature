@@ -124,22 +124,28 @@ class CombExpReplay(ExpReplay, Callback):
     def _populate_exp(self):
         """ populate a transition by epsilon-greedy"""
         old_s = self.player.current_state()
+        old_a_o =  self.player.get_internal_state()['opponent_action']
+
         if self.rng.rand() <= self.exploration or (len(self.mem) <= self.history_len):
             act = self.rng.choice(range(self.num_actions))
         else:
             # build a history state
-            history = self.mem.recent_state()
-            history.append(old_s)
-            history = np.stack(history, axis=2)
+            history_s, history_a_o = self.mem.recent_state()
+            history_s.append(old_s)
+            history_a_o.append(old_a_o)
+
+            history_s = np.stack(history_s, axis=2)
+            history_a_o = np.stack(history_a_o)
 
             # assume batched network
-            q_values = self.predictor([[history]])[0][0]  # this is the bottleneck
+            q_values = self.predictor([[history_s, history_a_o]])[0][0]  # this is the bottleneck
             act = np.argmax(q_values)
         reward, isOver = self.player.action(act)
 
         # NOTE: since modify action interface will destroy the proxy design
-        action_o = self.player.get_internal_state()['opponent_action']
-        self.mem.append(AugmentExperience(old_s, act, reward, isOver, action_o))
+        # In pi_cnn, we use a_t, but in policy autoencoder we use a_t-1
+        # action_o = self.player.get_internal_state()['opponent_action']
+        self.mem.append(AugmentExperience(old_s, act, reward, isOver, old_a_o))
 
     def _process_batch(self, batch_exp):
         state = np.asarray([e[0] for e in batch_exp], dtype='uint8')
