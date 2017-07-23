@@ -69,7 +69,7 @@ class CombReplayMemory(ReplayMemory):
                 state[:k + 1].fill(0)
                 break
         state = state.transpose(1, 2, 0)
-        return (state, reward[-2], action[-2], isOver[-2], action_o[-2])
+        return (state, reward[-2], action[-2], isOver[-2], action_o)
 
     def _assign(self, pos, exp):
         self.state[pos] = exp.state
@@ -124,7 +124,7 @@ class CombExpReplay(ExpReplay, Callback):
     def _populate_exp(self):
         """ populate a transition by epsilon-greedy"""
         old_s = self.player.current_state()
-        old_a_o =  self.player.get_internal_state()['opponent_action']
+        old_a_o = self.player.get_internal_state()['opponent_action']
 
         if self.rng.rand() <= self.exploration or (len(self.mem) <= self.history_len):
             act = self.rng.choice(range(self.num_actions))
@@ -135,10 +135,10 @@ class CombExpReplay(ExpReplay, Callback):
             history_a_o.append(old_a_o)
 
             history_s = np.stack(history_s, axis=2)
-            history_a_o = np.stack(history_a_o)
-
+            history_a_o = np.asarray(history_a_o)
+            
             # assume batched network
-            q_values = self.predictor([[history_s, history_a_o]])[0][0]  # this is the bottleneck
+            q_values = self.predictor([[history_s], [history_a_o]])[0][0]  # this is the bottleneck
             act = np.argmax(q_values)
         reward, isOver = self.player.action(act)
 
