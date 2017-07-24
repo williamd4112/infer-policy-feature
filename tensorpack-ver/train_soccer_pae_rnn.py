@@ -21,6 +21,7 @@ from tensorpack.utils.concurrency import *
 from tensorpack.tfutils import symbolic_functions as symbf
 from tensorpack.RL import *
 import tensorflow as tf
+from keras.layers import RepeatVector
 
 from DQNPAEModel import Model as DQNModel
 import common
@@ -28,10 +29,10 @@ from common import play_model, Evaluator, eval_model_multithread
 from soccer_env import SoccerPlayer
 from comb_expreplay import CombExpReplay
 
-BATCH_SIZE = 32
+BATCH_SIZE = 64
 IMAGE_SIZE = (84, 84)
-FRAME_HISTORY = 16
-ACTION_REPEAT = 1   # aka FRAME_SKIP
+FRAME_HISTORY = None
+ACTION_REPEAT = None   # aka FRAME_SKIP
 UPDATE_FREQ = 4
 
 GAMMA = 0.99
@@ -44,11 +45,14 @@ EVAL_EPISODE = 100000
 
 NUM_ACTIONS = None
 METHOD = None
+FIELD = None
 
 def get_player(viz=False, train=False):
-    pl = SoccerPlayer(image_shape=IMAGE_SIZE[::-1], viz=viz, frame_skip=ACTION_REPEAT)
+    logger.info('Frame skip = %d, Field = %s' % (ACTION_REPEAT, FIELD))
+    pl = SoccerPlayer(image_shape=IMAGE_SIZE[::-1], viz=viz, frame_skip=ACTION_REPEAT, field=FIELD)
     if not train:
-        # create a new axis to stack history on pl = MapPlayerState(pl, lambda im: im[:, :, np.newaxis])
+        # create a new axis to stack history on 
+        pl = MapPlayerState(pl, lambda im: im[:, :, np.newaxis])
         # in training, history is taken care of in expreplay buffer
         pl = HistoryFramePlayer(pl, FRAME_HISTORY)
 
@@ -78,17 +82,7 @@ class Model(DQNModel):
                  .Conv2D('conv0', out_channel=32, kernel_shape=8, stride=4, padding='VALID')
                  .Conv2D('conv1', out_channel=64, kernel_shape=4, stride=2, padding='VALID')
                  .Conv2D('conv2', out_channel=64, kernel_shape=3, stride=1, padding='VALID')
-
-                 # architecture used for the figure in the README, slower but takes fewer iterations to converge
-                 # .Conv2D('conv0', out_channel=32, kernel_shape=5)
-                 # .MaxPooling('pool0', 2)
-                 # .Conv2D('conv1', out_channel=32, kernel_shape=5)
-                 # .MaxPooling('pool1', 2)
-                 # .Conv2D('conv2', out_channel=64, kernel_shape=4)
-                 # .MaxPooling('pool2', 2)
-                 # .Conv2D('conv3', out_channel=64, kernel_shape=3)
-
-                .FullyConnected('fc0', 512, nl=LeakyReLU)())
+                 .FullyConnected('fc0', 512, nl=LeakyReLU)())
 
         with tf.variable_scope('pae'):
             # Image part
@@ -103,28 +97,35 @@ class Model(DQNModel):
             with argscope(LeakyReLU, alpha=0.01):
                 pi_a = FullyConnected('act-embed', action, 512, nl=LeakyReLU)
  
-            pi_h_unroll = tf.multiply(pi_l, pi_a)
-            pi_h_roll = tf.reshape(pi_h_unroll, [self.batch_size, self.channel, 512])
-            pi_h_roll, _ = tf.nn.dynamic_rnn(inputs=pi_h_roll, cell=tf.nn.rnn_cell.LSTMCell(num_units=512, state_is_tuple=True), 
-                                dtype=tf.float32, scope='rnn')
-            pi_h_unroll = tf.reshape(pi_h_roll, (self.batch_size * self.channel, 512))
+            pi_h = tf.multiply(pi_l, pi_a)
+            
+            # Encode both image and action
+            pi_h_roll = tf.reshape(pi_h, [self.batch_size, self.channel, 512])
+            pi_h_enc, enc_state = tf.nn.dynamic_rnn(inputs=pi_h_roll, 
+                                cell=tf.nn.rnn_cell.LSTMCell(num_units=512, state_is_tuple=True), 
+                                dtype=tf.float32, scope='enc')
+            pi_h_enc = pi_h_enc[:, -1, :]
+            pi_h_enc = RepeatVector(self.channel)(pi_h_enc)
 
-            pi_y = FullyConnected('fc2', pi_h_unroll, self.num_actions, nl=tf.identity)
-            pi_h = pi_h_roll[:, -1, :]
+            # Decode both image and action to action sequnce
+            pi_h_dec, dec_state = tf.nn.dynamic_rnn(inputs=pi_h_enc,
+                                cell=tf.nn.rnn_cell.LSTMCell(num_units=512, state_is_tuple=True),
+                                dtype=tf.float32, scope='dec')      
+            pi_h_dec = tf.reshape(pi_h_dec, (self.batch_size * self.channel, 512))
+            pi_y = FullyConnected('fc2', pi_h_dec, self.num_actions, nl=tf.identity)
  
+        # Merge
+        l = tf.multiply(l, pi_h)
+
         # Recurrent part
-        h_size = 512
+        h_size = 512 
         l = tf.reshape(l, [self.batch_size, self.channel, h_size])
         cell = tf.nn.rnn_cell.LSTMCell(num_units=h_size, 
                                     state_is_tuple=True)
-        self.state_in = None
         l, self.rnn_state = tf.nn.dynamic_rnn(
-            inputs=l, cell=cell, dtype=tf.float32, initial_state=self.state_in, scope='rnn')
+            inputs=l, cell=cell, dtype=tf.float32, scope='rnn')
         l = l[:, -1, :]
-
-        # Merge
-        l = tf.multiply(l, pi_h)
-              
+                    
         if self.method != 'Dueling':
             Q = FullyConnected('fct', l, self.num_actions, nl=tf.identity)
         else:
@@ -179,12 +180,19 @@ if __name__ == '__main__':
                         choices=['play', 'eval', 'train'], default='train')
     parser.add_argument('--algo', help='algorithm',
                         choices=['DQN', 'Double', 'Dueling'], default='DQN')
+    parser.add_argument('--skip', help='act repeat', type=int, required=True)
+    parser.add_argument('--field', help='field type', type=str, choices=['small', 'large'], required=True)
+    parser.add_argument('--hist_len', help='hist len', type=int, required=True)
     args = parser.parse_args()
 
     if args.gpu:
         os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
     METHOD = args.algo
+    ACTION_REPEAT = args.skip
+    FIELD = args.field
+    FRAME_HISTORY = args.hist_len
 
+    
     # set num_actions
     NUM_ACTIONS = SoccerPlayer().get_action_space().num_actions()
 
@@ -201,8 +209,8 @@ if __name__ == '__main__':
             eval_model_multithread(cfg, EVAL_EPISODE, get_player)
     else:
         logger.set_logger_dir(
-            os.path.join('train_log', 'DRQNPAE-{}'.format(
-                os.path.basename('soccer').split('.')[0])))
+            os.path.join('train_log', 'DRQNPAE-field-{}-skip-{}-hist-{}-{}'.format(
+                args.field, args.skip, args.hist_len, os.path.basename('soccer').split('.')[0])))
         config = get_config()
         if args.load:
             config.session_init = SaverRestore(args.load)
