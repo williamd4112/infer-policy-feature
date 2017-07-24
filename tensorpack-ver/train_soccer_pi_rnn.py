@@ -30,7 +30,7 @@ from augment_expreplay import AugmentExpReplay
 
 BATCH_SIZE = 64
 IMAGE_SIZE = (84, 84)
-FRAME_HISTORY = 16
+FRAME_HISTORY = None
 ACTION_REPEAT = None   # aka FRAME_SKIP
 UPDATE_FREQ = 4
 
@@ -38,7 +38,7 @@ GAMMA = 0.99
 
 MEMORY_SIZE = 1e6
 # will consume at least 1e6 * 84 * 84 bytes == 6.6G memory.
-INIT_MEMORY_SIZE = 50000
+INIT_MEMORY_SIZE = 500
 STEPS_PER_EPOCH = 10000 // UPDATE_FREQ * 10  # each epoch is 100k played frames
 EVAL_EPISODE = 50
 
@@ -79,15 +79,15 @@ class Model(DQNModel):
                  .FullyConnected('fc0', 512, nl=LeakyReLU)())
 
         with tf.variable_scope('pi'):
-            with argscope(Conv2D, nl=PReLU.symbolic_functions, use_bias=True), \
-                    argscope(LeakyReLU, alhpa=0.01):
+            with argscope(Conv2D, nl=PReLU.symbolic_function, use_bias=True), \
+                    argscope(LeakyReLU, alpha=0.01):
                     pi_l = Conv2D('conv0', image, out_channel=64, kernel_shape=6, stride=2, padding='VALID')
                     pi_l = Conv2D('conv1', pi_l, out_channel=64, kernel_shape=6, stride=2, padding='SAME')
                     pi_l = Conv2D('conv2', pi_l, out_channel=64, kernel_shape=6, stride=2, padding='SAME')
                     pi_l = FullyConnected('fc0', pi_l, 1024, nl=LeakyReLU)
                     pi_h = FullyConnected('fc1', pi_l, 512, nl=LeakyReLU)
             pi_y = tf.reshape(pi_h, [self.batch_size, self.channel, 512])
-            pi_y, _ = tf.nn.dynamic_rnn(inputs=pi_h, 
+            pi_y, _ = tf.nn.dynamic_rnn(inputs=pi_y, 
                                 cell=tf.nn.rnn_cell.LSTMCell(num_units=512, state_is_tuple=True), 
                                 dtype=tf.float32, scope='rnn')
             pi_y = pi_y[:, -1, :]
@@ -95,7 +95,7 @@ class Model(DQNModel):
  
         # Merge
         l = tf.multiply(l, pi_h)
-
+        
         # Recurrent part
         h_size = 512
         l = tf.reshape(l, [self.batch_size, self.channel, h_size])
