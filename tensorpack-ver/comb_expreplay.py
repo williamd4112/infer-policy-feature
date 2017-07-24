@@ -66,7 +66,10 @@ class CombReplayMemory(ReplayMemory):
         for k in range(self.history_len - 2, -1, -1):
             if isOver[k]:
                 state = copy.deepcopy(state)
+                action_o = copy.deepcopy(action_o)
+                
                 state[:k + 1].fill(0)
+                action_o[k + 1] = NOOP_ACT
                 break
         state = state.transpose(1, 2, 0)
         return (state, reward[-2], action[-2], isOver[-2], action_o)
