@@ -107,7 +107,6 @@ class SoccerPlayer(RLEnvironment):
         # 0.299,0.587.0.114. same as rgb2y in torch/image
         ret = cv2.cvtColor(ret, cv2.COLOR_RGB2GRAY)
         ret = cv2.resize(ret, self.image_shape)
-        ret = np.reshape(ret, self.image_shape + (1,))
         return ret.astype('uint8')  # to save some memory
 
     def get_action_space(self):
