@@ -38,7 +38,7 @@ GAMMA = 0.99
 
 MEMORY_SIZE = 1e6
 # will consume at least 1e6 * 84 * 84 bytes == 6.6G memory.
-INIT_MEMORY_SIZE = 500
+INIT_MEMORY_SIZE = 50000
 STEPS_PER_EPOCH = 10000 // UPDATE_FREQ * 10  # each epoch is 100k played frames
 EVAL_EPISODE = 50
 
@@ -141,7 +141,7 @@ def get_config():
                 every_k_steps=10000 // UPDATE_FREQ),    # update target network every 10k steps
             expreplay,
             ScheduledHyperParamSetter('learning_rate',
-                                      [(60, 4e-4), (100, 2e-4)]),
+                                      [(20, 4e-4), (30, 2e-4)]),
             ScheduledHyperParamSetter(
                 ObjAttrParam(expreplay, 'exploration'),
                 [(0, 1), (10, 0.1), (320, 0.01)],   # 1->0.1 in the first million steps
@@ -150,7 +150,7 @@ def get_config():
         ],
         model=M,
         steps_per_epoch=STEPS_PER_EPOCH,
-        max_epoch=1000,
+        max_epoch=40,
         # run the simulator on a separate GPU if available
         predict_tower=[1] if get_nr_gpu() > 1 else [0],
     )
