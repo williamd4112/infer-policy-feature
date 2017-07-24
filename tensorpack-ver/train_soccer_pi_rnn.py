@@ -53,8 +53,7 @@ def get_player(viz=False, train=False):
         # create a new axis to stack history on pl = MapPlayerState(pl, lambda im: im[:, :, np.newaxis])
         # in training, history is taken care of in expreplay buffer
         pl = HistoryFramePlayer(pl, FRAME_HISTORY)
-
-        pl = PreventStuckPlayer(pl, 30, 1)
+        pl = PreventStuckPlayer(pl, 5, 1)
     #pl = LimitLengthPlayer(pl, 30000)
     return pl
 
@@ -77,44 +76,37 @@ class Model(DQNModel):
                  .Conv2D('conv0', out_channel=32, kernel_shape=8, stride=4, padding='VALID')
                  .Conv2D('conv1', out_channel=64, kernel_shape=4, stride=2, padding='VALID')
                  .Conv2D('conv2', out_channel=64, kernel_shape=3, stride=1, padding='VALID')
+                 .FullyConnected('fc0', 512, nl=LeakyReLU)())
 
-                 # architecture used for the figure in the README, slower but takes fewer iterations to converge
-                 # .Conv2D('conv0', out_channel=32, kernel_shape=5)
-                 # .MaxPooling('pool0', 2)
-                 # .Conv2D('conv1', out_channel=32, kernel_shape=5)
-                 # .MaxPooling('pool1', 2)
-                 # .Conv2D('conv2', out_channel=64, kernel_shape=4)
-                 # .MaxPooling('pool2', 2)
-                 # .Conv2D('conv3', out_channel=64, kernel_shape=3)
-
-                .FullyConnected('fc0', 512, nl=LeakyReLU)())
-            #l = symbf.batch_flatten(l)
-
-            with tf.variable_scope('pi'):
-                with argscope(Conv2D, nl=tf.nn.relu):
-                        pi_l = Conv2D('conv0', image, out_channel=64, kernel_shape=6, stride=2, padding='VALID')
-                        pi_l = Conv2D('conv1', pi_l, out_channel=64, kernel_shape=6, stride=2, padding='SAME')
-                        pi_l = Conv2D('conv2', pi_l, out_channel=64, kernel_shape=6, stride=2, padding='SAME')
-                pi_l = FullyConnected('fc0', pi_l, 1024, nl=tf.nn.relu)
-                pi_h = FullyConnected('fc1', pi_l, 512) 
-                pi_h = tf.reshape(pi_h, [self.batch_size, self.channel, 512])
-                pi_h, _ = tf.nn.dynamic_rnn(inputs=pi_h, cell=tf.nn.rnn_cell.LSTMCell(num_units=512, state_is_tuple=True), 
-                                    dtype=tf.float32, scope='rnn')
-                pi_h = pi_h[:, -1, :]
-                pi_y = FullyConnected('fc2', pi_h, self.num_actions, nl=tf.identity)
+        with tf.variable_scope('pi'):
+            with argscope(Conv2D, nl=PReLU.symbolic_functions, use_bias=True), \
+                    argscope(LeakyReLU, alhpa=0.01):
+                    pi_l = Conv2D('conv0', image, out_channel=64, kernel_shape=6, stride=2, padding='VALID')
+                    pi_l = Conv2D('conv1', pi_l, out_channel=64, kernel_shape=6, stride=2, padding='SAME')
+                    pi_l = Conv2D('conv2', pi_l, out_channel=64, kernel_shape=6, stride=2, padding='SAME')
+                    pi_l = FullyConnected('fc0', pi_l, 1024, nl=LeakyReLU)
+                    pi_h = FullyConnected('fc1', pi_l, 512, nl=LeakyReLU)
+            pi_y = tf.reshape(pi_h, [self.batch_size, self.channel, 512])
+            pi_y, _ = tf.nn.dynamic_rnn(inputs=pi_h, 
+                                cell=tf.nn.rnn_cell.LSTMCell(num_units=512, state_is_tuple=True), 
+                                dtype=tf.float32, scope='rnn')
+            pi_y = pi_y[:, -1, :]
+            pi_y = FullyConnected('fc2', pi_y, self.num_actions, nl=tf.identity)
  
-            # Recurrent part
-            h_size = 512
-            l = tf.reshape(l, [self.batch_size, self.channel, h_size])
-            cell = tf.nn.rnn_cell.LSTMCell(num_units=h_size, 
-                                        state_is_tuple=True)
-            self.state_in = None
-            l, self.rnn_state = tf.nn.dynamic_rnn(
-                inputs=l, cell=cell, dtype=tf.float32, initial_state=self.state_in, scope='rnn')
-            l = l[:, -1, :]
+        # Merge
+        l = tf.multiply(l, pi_h)
 
-            # Merge
-            l = tf.multiply(l, pi_h)
+        # Recurrent part
+        h_size = 512
+        l = tf.reshape(l, [self.batch_size, self.channel, h_size])
+        cell = tf.nn.rnn_cell.LSTMCell(num_units=h_size, 
+                                    state_is_tuple=True)
+        l, _ = tf.nn.dynamic_rnn(
+                                        inputs=l, 
+                                        cell=cell, 
+                                        dtype=tf.float32, 
+                                        scope='rnn')
+        l = l[:, -1, :]
               
         if self.method != 'Dueling':
             Q = FullyConnected('fct', l, self.num_actions, nl=tf.identity)
