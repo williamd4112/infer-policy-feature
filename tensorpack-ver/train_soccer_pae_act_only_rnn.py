@@ -22,7 +22,7 @@ from tensorpack.tfutils import symbolic_functions as symbf
 from tensorpack.RL import *
 import tensorflow as tf
 
-from DQNPIAModel import Model as DQNModel
+from DQNPAEModel import Model as DQNModel
 import common
 from common import play_model, Evaluator, eval_model_multithread
 from soccer_env import SoccerPlayer
@@ -104,12 +104,14 @@ class Model(DQNModel):
             with argscope(LeakyReLU, alpha=0.01):
                 pi_a = FullyConnected('act-embed', action, 512, nl=LeakyReLU)
  
-            pi_h = tf.multiply(pi_l, pi_a)
-            pi_h_roll = tf.reshape(pi_h, [self.batch_size, self.channel, 512])
+            pi_h_unroll = tf.multiply(pi_l, pi_a)
+            pi_h_roll = tf.reshape(pi_h_unroll, [self.batch_size, self.channel, 512])
             pi_h_roll, _ = tf.nn.dynamic_rnn(inputs=pi_h_roll, cell=tf.nn.rnn_cell.LSTMCell(num_units=512, state_is_tuple=True), 
                                 dtype=tf.float32, scope='rnn')
+            pi_h_unroll = tf.reshape(pi_h_roll, (self.batch_size * self.channel, 512))
+
+            pi_y = FullyConnected('fc2', pi_h_unroll, self.num_actions, nl=tf.identity)
             pi_h = pi_h_roll[:, -1, :]
-            pi_y = FullyConnected('fc2', pi_h, self.num_actions, nl=tf.identity)
  
         # Recurrent part
         h_size = 512
@@ -131,7 +133,7 @@ class Model(DQNModel):
             V = FullyConnected('fctV', l, 1, nl=tf.identity)
             As = FullyConnected('fctA', l, self.num_actions, nl=tf.identity)
             Q = tf.add(As, V - tf.reduce_mean(As, 1, keep_dims=True))
-        return tf.identity(Q, name='Qvalue'), tf.identity(pi_y, name='Pivalue')
+        return tf.identity(Q, name='Qvalue'), tf.identity(pi_y, name='PAEvalue')
 
 def get_config():
     M = Model()
@@ -180,15 +182,14 @@ if __name__ == '__main__':
                         choices=['DQN', 'Double', 'Dueling'], default='DQN')
     parser.add_argument('--skip', help='act repeat', type=int, required=True)
     parser.add_argument('--field', help='field type', type=str, choices=['small', 'large'], required=True)
+
     args = parser.parse_args()
 
     if args.gpu:
         os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
     METHOD = args.algo
-
     ACTION_REPEAT = args.skip
     FIELD = args.field
-
 
     # set num_actions
     NUM_ACTIONS = SoccerPlayer().get_action_space().num_actions()
@@ -206,7 +207,7 @@ if __name__ == '__main__':
             eval_model_multithread(cfg, EVAL_EPISODE, get_player)
     else:
         logger.set_logger_dir(
-            os.path.join('train_log', 'DRQNPIA-field-{}-skip-{}-{}'.format(
+            os.path.join('train_log', 'DRQNPAE-ACT-field-{}-skip-{}-{}'.format(
                 args.field, args.skip, os.path.basename('soccer').split('.')[0])))
 
         config = get_config()

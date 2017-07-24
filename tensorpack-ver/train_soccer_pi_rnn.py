@@ -28,10 +28,10 @@ from common import play_model, Evaluator, eval_model_multithread
 from soccer_env import SoccerPlayer
 from augment_expreplay import AugmentExpReplay
 
-BATCH_SIZE = 32
+BATCH_SIZE = 64
 IMAGE_SIZE = (84, 84)
 FRAME_HISTORY = 16
-ACTION_REPEAT = 1   # aka FRAME_SKIP
+ACTION_REPEAT = None   # aka FRAME_SKIP
 UPDATE_FREQ = 4
 
 GAMMA = 0.99
@@ -44,10 +44,11 @@ EVAL_EPISODE = 50
 
 NUM_ACTIONS = None
 METHOD = None
+FIELD = None
 
 
 def get_player(viz=False, train=False):
-    pl = SoccerPlayer(image_shape=IMAGE_SIZE[::-1], viz=viz, frame_skip=ACTION_REPEAT)
+    pl = SoccerPlayer(image_shape=IMAGE_SIZE[::-1], viz=viz, frame_skip=ACTION_REPEAT, field=FIELD)
     if not train:
         # create a new axis to stack history on pl = MapPlayerState(pl, lambda im: im[:, :, np.newaxis])
         # in training, history is taken care of in expreplay buffer
@@ -170,11 +171,18 @@ if __name__ == '__main__':
                         choices=['play', 'eval', 'train'], default='train')
     parser.add_argument('--algo', help='algorithm',
                         choices=['DQN', 'Double', 'Dueling'], default='DQN')
+    parser.add_argument('--skip', help='act repeat', type=int, required=True)
+    parser.add_argument('--field', help='field type', type=str, choices=['small', 'large'], required=True)
+    parser.add_argument('--hist_len', help='hist len', type=int, required=True)
     args = parser.parse_args()
 
     if args.gpu:
         os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
     METHOD = args.algo
+
+    ACTION_REPEAT = args.skip
+    FIELD = args.field
+    FRAME_HISTORY = args.hist_len
 
     # set num_actions
     NUM_ACTIONS = SoccerPlayer().get_action_space().num_actions()
@@ -192,8 +200,8 @@ if __name__ == '__main__':
             eval_model_multithread(cfg, EVAL_EPISODE, get_player)
     else:
         logger.set_logger_dir(
-            os.path.join('train_log', 'DRQNPI-{}'.format(
-                os.path.basename('soccer').split('.')[0])))
+            os.path.join('train_log', 'DRQNPI-field-{}-skip-{}-hist-{}-{}'.format(
+                args.field, args.skip, args.hist_len, os.path.basename('soccer').split('.')[0])))
         config = get_config()
         if args.load:
             config.session_init = SaverRestore(args.load)
