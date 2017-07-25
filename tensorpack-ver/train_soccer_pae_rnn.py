@@ -110,12 +110,10 @@ class Model(DQNModel):
             # Decode both image and action to action sequnce
             pi_h_dec, dec_state = tf.nn.dynamic_rnn(inputs=pi_h_enc,
                                 cell=tf.nn.rnn_cell.LSTMCell(num_units=512, state_is_tuple=True),
-                                dtype=tf.float32, scope='dec')      
+                                dtype=tf.float32, scope='dec')
+            pi_h = pi_h_dec[:, -1, :]      
             pi_h_dec = tf.reshape(pi_h_dec, (self.batch_size * self.channel, 512))
             pi_y = FullyConnected('fc2', pi_h_dec, self.num_actions, nl=tf.identity)
- 
-        # Merge
-        l = tf.multiply(l, pi_h)
 
         # Recurrent part
         h_size = 512 
@@ -125,6 +123,9 @@ class Model(DQNModel):
         l, self.rnn_state = tf.nn.dynamic_rnn(
             inputs=l, cell=cell, dtype=tf.float32, scope='rnn')
         l = l[:, -1, :]
+
+        # Merge
+        l = tf.multiply(l, pi_h)
                     
         if self.method != 'Dueling':
             Q = FullyConnected('fct', l, self.num_actions, nl=tf.identity)
