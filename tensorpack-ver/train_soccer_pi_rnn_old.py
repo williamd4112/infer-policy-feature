@@ -28,7 +28,7 @@ from common import play_model, Evaluator, eval_model_multithread
 from soccer_env import SoccerPlayer
 from augment_expreplay import AugmentExpReplay
 
-BATCH_SIZE = 64
+BATCH_SIZE = None
 IMAGE_SIZE = (84, 84)
 FRAME_HISTORY = None
 ACTION_REPEAT = None   # aka FRAME_SKIP
@@ -168,6 +168,7 @@ if __name__ == '__main__':
     parser.add_argument('--skip', help='act repeat', type=int, required=True)
     parser.add_argument('--field', help='field type', type=str, choices=['small', 'large'], required=True)
     parser.add_argument('--hist_len', help='hist len', type=int, required=True)
+    parser.add_argument('--batch_size', help='batch size', type=int, required=True)
     args = parser.parse_args()
 
     if args.gpu:
@@ -194,8 +195,8 @@ if __name__ == '__main__':
             eval_model_multithread(cfg, EVAL_EPISODE, get_player)
     else:
         logger.set_logger_dir(
-            os.path.join('train_log', 'DRQNPI-old-field-{}-skip-{}-hist-{}-{}'.format(
-                args.field, args.skip, args.hist_len, os.path.basename('soccer').split('.')[0])))
+            os.path.join('train_log', 'DRQNPI-old-field-{}-skip-{}-hist-{}-batch-{}-{}'.format(
+                args.field, args.skip, args.hist_len, args.batch_size, os.path.basename('soccer').split('.')[0])))
         config = get_config()
         if args.load:
             config.session_init = SaverRestore(args.load)
