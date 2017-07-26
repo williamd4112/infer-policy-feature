@@ -29,7 +29,7 @@ from common import play_model, Evaluator, eval_model_multithread
 from soccer_env import SoccerPlayer
 from comb_expreplay import CombExpReplay
 
-BATCH_SIZE = 64
+BATCH_SIZE = None
 IMAGE_SIZE = (84, 84)
 FRAME_HISTORY = None
 ACTION_REPEAT = None   # aka FRAME_SKIP
@@ -100,9 +100,11 @@ class Model(DQNModel):
             # Merge
             pi_h_roll = tf.multiply(pi_l, pi_a)
 
-            pi_h_roll = tf.reshape(pi_h, [self.batch_size, self.channel, 512])
+            pi_h_roll = tf.reshape(pi_h_roll, [self.batch_size, self.channel, 512])
             pi_h_roll, _ = tf.nn.dynamic_rnn(inputs=pi_h_roll, 
-                                cell=tf.nn.rnn_cell.LSTMCell(num_units=512, state_is_tuple=True), 
+                                cell=tf.nn.rnn_cell.LSTMCell(num_units=512, state_is_tuple=True),
+                                dtype=tf.float32,
+                                scope='rnn') 
             pi_h = pi_h_roll[:, -1, :]
             pi_h_unroll = tf.reshape(pi_h_roll, [self.batch_size * self.channel, 512])
 
@@ -177,6 +179,7 @@ if __name__ == '__main__':
     parser.add_argument('--skip', help='act repeat', type=int, required=True)
     parser.add_argument('--field', help='field type', type=str, choices=['small', 'large'], required=True)
     parser.add_argument('--hist_len', help='hist len', type=int, required=True)
+    parser.add_argument('--batch_size', help='batch size', type=int, required=True)
     args = parser.parse_args()
 
     if args.gpu:
@@ -185,7 +188,7 @@ if __name__ == '__main__':
     ACTION_REPEAT = args.skip
     FIELD = args.field
     FRAME_HISTORY = args.hist_len
-
+    BATCH_SIZE = args.batch_size
     
     # set num_actions
     NUM_ACTIONS = SoccerPlayer().get_action_space().num_actions()
@@ -203,8 +206,8 @@ if __name__ == '__main__':
             eval_model_multithread(cfg, EVAL_EPISODE, get_player)
     else:
         logger.set_logger_dir(
-            os.path.join('train_log', 'DRQNPAE-field-{}-skip-{}-hist-{}-{}'.format(
-                args.field, args.skip, args.hist_len, os.path.basename('soccer').split('.')[0])))
+            os.path.join('train_log', 'DRQNPAE-field-{}-skip-{}-hist-{}-batch-{}-{}'.format(
+                args.field, args.skip, args.hist_len, args.batch_size, os.path.basename('soccer').split('.')[0])))
         config = get_config()
         if args.load:
             config.session_init = SaverRestore(args.load)
