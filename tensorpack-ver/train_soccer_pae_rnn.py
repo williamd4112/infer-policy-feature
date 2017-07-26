@@ -97,24 +97,17 @@ class Model(DQNModel):
             with argscope(LeakyReLU, alpha=0.01):
                 pi_a = FullyConnected('act-embed', action, 512, nl=LeakyReLU)
  
-            pi_h = tf.multiply(pi_l, pi_a)
-            
-            # Encode both image and action
+            # Merge
+            pi_h_roll = tf.multiply(pi_l, pi_a)
+
             pi_h_roll = tf.reshape(pi_h, [self.batch_size, self.channel, 512])
-            pi_h_enc, enc_state = tf.nn.dynamic_rnn(inputs=pi_h_roll, 
+            pi_h_roll, _ = tf.nn.dynamic_rnn(inputs=pi_h_roll, 
                                 cell=tf.nn.rnn_cell.LSTMCell(num_units=512, state_is_tuple=True), 
-                                dtype=tf.float32, scope='enc')
-            pi_h_enc = pi_h_enc[:, -1, :]
-            pi_h_enc = RepeatVector(self.channel)(pi_h_enc)
+            pi_h = pi_h_roll[:, -1, :]
+            pi_h_unroll = tf.reshape(pi_h_roll, [self.batch_size * self.channel, 512])
 
-            # Decode both image and action to action sequnce
-            pi_h_dec, dec_state = tf.nn.dynamic_rnn(inputs=pi_h_enc,
-                                cell=tf.nn.rnn_cell.LSTMCell(num_units=512, state_is_tuple=True),
-                                dtype=tf.float32, scope='dec')
-            pi_h = pi_h_dec[:, -1, :]      
-            pi_h_dec = tf.reshape(pi_h_dec, (self.batch_size * self.channel, 512))
-            pi_y = FullyConnected('fc2', pi_h_dec, self.num_actions, nl=tf.identity)
-
+            pi_y = FullyConnected('fc2', pi_h_unroll, self.num_actions, nl=tf.identity)
+  
         # Recurrent part
         h_size = 512 
         l = tf.reshape(l, [self.batch_size, self.channel, h_size])
