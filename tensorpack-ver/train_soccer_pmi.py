@@ -40,7 +40,7 @@ GAMMA = 0.99
 
 MEMORY_SIZE = 1e6
 # will consume at least 1e6 * 84 * 84 bytes == 6.6G memory.
-INIT_MEMORY_SIZE = 5e4
+INIT_MEMORY_SIZE = 1e3
 STEPS_PER_EPOCH = 10000 // UPDATE_FREQ * 10  # each epoch is 100k played frames
 EVAL_EPISODE = 50
 
@@ -102,18 +102,19 @@ class Model(DQNModel):
         l = tf.multiply(q_l, pi_h)
 
         with tf.variable_scope('mi'):
-            with argscope(FullyConnected, nl=tf.nn.relu):
-                Pvar = FullyConnected('vfc0', pi_h, 512)
-                Pvar = FullyConnected('vfc1', Pvar, 128)
-                Pvar = tf.contrib.layers.batch_norm(Pvar)
+            Pvar = FullyConnected('vfc0', pi_h, 512, nl=tf.nn.relu)
+            Pvar = FullyConnected('vfc1', Pvar, 128)
+            Pvar = tf.contrib.layers.batch_norm(Pvar)
 
-                Plogli = tf.concat([Pvar, l], axis=1)
-                Plogli = FullyConnected('lfc0', Plogli, 512)
-                Plogli = FullyConnected('lfc1', Plogli, 128)
-                Plogli = tf.contrib.layers.batch_norm(Plogli)
+            Plogli = tf.concat([Pvar, l], axis=1)
+            Plogli = FullyConnected('lfc0', Plogli, 512, nl=tf.nn.relu)
+            Plogli = FullyConnected('lfc1', Plogli, 128)
+            Plogli = tf.contrib.layers.batch_norm(Plogli)
+            Plogli = tf.nn.relu(Plogli)
 
-                Pmean = FullyConnected('mfc0', Pvar, 128)
-                Pmean = tf.contrib.layers.batch_norm(Pmean)
+            Pmean = FullyConnected('mfc0', Pvar, 128)
+            Pmean = tf.contrib.layers.batch_norm(Pmean)
+            Pmean = tf.nn.relu(Pmean)
 
         if self.method != 'Dueling':
             Q = FullyConnected('fct', l, self.num_actions, nl=tf.identity)
@@ -157,7 +158,8 @@ def get_config():
             HumanHyperParamSetter('learning_rate'),
         ],
         model=M,
-        steps_per_epoch=STEPS_PER_EPOCH,
+        #steps_per_epoch=STEPS_PER_EPOCH,
+        steps_per_epoch=1000,
         max_epoch=1000,
         # run the simulator on a separate GPU if available
         predict_tower=[1] if get_nr_gpu() > 1 else [0],
