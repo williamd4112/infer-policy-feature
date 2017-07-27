@@ -179,6 +179,7 @@ if __name__ == '__main__':
     FIELD = args.field
     FRAME_HISTORY = args.hist_len
     BATCH_SIZE = args.batch_size
+    
     # set num_actions
     NUM_ACTIONS = SoccerPlayer().get_action_space().num_actions()
 
