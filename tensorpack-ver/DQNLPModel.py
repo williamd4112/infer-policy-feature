@@ -7,6 +7,8 @@ import abc
 import tensorflow as tf
 from tensorpack import ModelDesc, InputDesc
 from tensorpack.utils import logger
+
+from tensorpack.tfutils.gradproc import FilterNoneGrad
 from tensorpack.tfutils import (
     collection, summary, get_current_tower_context, optimizer, gradproc)
 from tensorpack.tfutils import symbolic_functions as symbf
@@ -28,24 +30,26 @@ class Model(ModelDesc):
                           'comb_state'),
                 InputDesc(tf.int64, (None,), 'action'),
                 InputDesc(tf.float32, (None,), 'reward'),
-                InputDesc(tf.bool, (None,), 'isOver')]
+                InputDesc(tf.bool, (None,), 'isOver'),
+                InputDesc(tf.int64, (None,), 'action_o')]
 
     @abc.abstractmethod
     def _get_DQN_prediction(self, image):
         pass
 
     def _build_graph(self, inputs):
-        comb_state, action, reward, isOver = inputs
+        comb_state, action, reward, isOver, action_o = inputs
         comb_state = tf.cast(comb_state, tf.float32)
         state = tf.slice(comb_state, [0, 0, 0, 0], [-1, -1, -1, self.channel], name='state')
-        
-        self.predict_value = self._get_DQN_prediction(state)
+
+        self.predict_value, lp_value = self._get_DQN_prediction(state)
         if not get_current_tower_context().is_training:
             return
 
         reward = tf.clip_by_value(reward, -1, 1)
         next_state = tf.slice(comb_state, [0, 0, 0, 1], [-1, -1, -1, self.channel], name='next_state')
         action_onehot = tf.one_hot(action, self.num_actions, 1.0, 0.0)
+        action_o_one_hot = tf.one_hot(action_o, self.num_actions, 1.0, 0.0)
 
         pred_action_value = tf.reduce_sum(self.predict_value * action_onehot, 1)  # N,
         max_pred_reward = tf.reduce_mean(tf.reduce_max(
@@ -54,7 +58,7 @@ class Model(ModelDesc):
 
         with tf.variable_scope('target'), \
                 collection.freeze_collection([tf.GraphKeys.TRAINABLE_VARIABLES]):
-            targetQ_predict_value = self._get_DQN_prediction(next_state)    # NxA
+            targetQ_predict_value, target_lp_value = self._get_DQN_prediction(next_state)    # NxA
 
         if self.method != 'Double':
             # DQN
@@ -63,18 +67,22 @@ class Model(ModelDesc):
             # Double-DQN
             sc = tf.get_variable_scope()
             with tf.variable_scope(sc, reuse=True):
-                next_predict_value = self._get_DQN_prediction(next_state)
+                next_predict_value, next_lp_value = self._get_DQN_prediction(next_state)
             self.greedy_choice = tf.argmax(next_predict_value, 1)   # N,
             predict_onehot = tf.one_hot(self.greedy_choice, self.num_actions, 1.0, 0.0)
             best_v = tf.reduce_sum(targetQ_predict_value * predict_onehot, 1)
 
         target = reward + (1.0 - tf.cast(isOver, tf.float32)) * self.gamma * tf.stop_gradient(best_v)
+        
+        q_cost = (symbf.huber_loss(target - pred_action_value))
+        #pi_cost = (tf.nn.softmax_cross_entropy_with_logits(labels=action_o_one_hot, logits=pi_value))
+        lp_cost = symbf.huber_loss(lp_value - tf.reduce_mean(-self.predict_value, axis=1, keep_dims=True))
+        self.cost = tf.reduce_mean(q_cost + 0.001 * lp_cost, name='cost')
 
-        self.cost = tf.reduce_mean(symbf.huber_loss(
-                                   target - pred_action_value), name='cost')
         summary.add_param_summary(('conv.*/W', ['histogram', 'rms']),
                                   ('fc.*/W', ['histogram', 'rms']))   # monitor all W
         summary.add_moving_summary(self.cost)
+
 
     def _get_optimizer(self):
         lr = symbf.get_scalar_var('learning_rate', 1e-3, summary=True)
@@ -94,3 +102,5 @@ class Model(ModelDesc):
                 logger.info("{} <- {}".format(target_name, new_name))
                 ops.append(v.assign(G.get_tensor_by_name(new_name + ':0')))
         return tf.group(*ops, name='update_target_network')
+
+

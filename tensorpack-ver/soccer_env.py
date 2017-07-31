@@ -34,11 +34,16 @@ class SoccerPlayer(RLEnvironment):
     SOCCER_WIDTH = 288
     SOCCER_HEIGHT = 192
 
-    def __init__(self, viz=0, height_range=(None, None), field=None,
-                frame_skip=4, image_shape=(84, 84), nullop_start=30, mode=None, team_size=1):
+    def __init__(self, viz=0, 
+                height_range=(None, None), 
+                field=None, partial=False, radius=2,
+                frame_skip=4, 
+                image_shape=(84, 84), 
+                nullop_start=30, mode=None, team_size=1):
         super(SoccerPlayer, self).__init__()
         self.mode = mode
         self.field = field
+        self.partial = partial
         self.viz = viz
         if self.viz:
             self.renderer_options = soccer_renderer.RendererOptions(
@@ -56,7 +61,13 @@ class SoccerPlayer(RLEnvironment):
 
         self.computer_team_name = self.env.team_names[1]
         self.computer_agent_index = self.env.get_agent_index(self.computer_team_name, 0)
-
+        
+        # Partial
+        if self.partial:
+            self.radius = radius
+            self.player_team_name = self.env.team_names[0]
+            self.player_agent_index = self.env.get_agent_index(self.player_team_name, 0)
+ 
         self.width, self.height = self.SOCCER_WIDTH, self.SOCCER_HEIGHT
         self.actions = self.env.actions
 
@@ -73,7 +84,10 @@ class SoccerPlayer(RLEnvironment):
         :returns: the current 3-channel image
         """
         self.env.render()
-        screenshot = self.env.renderer.get_screenshot()
+        if self.partial:
+            screenshot = self.env.renderer.get_po_screenshot(self.player_agent_index, self.radius)
+        else:
+            screenshot = self.env.renderer.get_screenshot()
         return screenshot
 
     def current_state(self):
@@ -98,6 +112,7 @@ class SoccerPlayer(RLEnvironment):
     def get_action_space(self):
         return DiscreteActionSpace(len(self.actions))
 
+
     def finish_episode(self):
         self.stats['score'].append(self.current_episode_score.sum)
 
@@ -107,9 +122,6 @@ class SoccerPlayer(RLEnvironment):
         if self.mode is not None:
             self.env.state.set_agent_mode(self.computer_agent_index, self.mode)
 
-        # random null-ops start
-        NULL_OP_ACTION = self.env.actions[4]
-        n = random.randint(0, self.nullop_start)
         self.last_raw_screen = self._grab_raw_image()
 
     def action(self, act):
@@ -139,45 +151,14 @@ class SoccerPlayer(RLEnvironment):
         info['opponent_action'] = self.env.actions.index(opponent_act if opponent_act else 'STAND')
         return info
 
-if __name__ == '__main__':
-    import sys
+class SoccerPlayerWithInternalState(SoccerPlayer):
+    def current_state(self):
+        img = self._grab_raw_image()
+        img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+        img = cv2.resize(img, self.image_shape)
+        
+        # Last action (a_t_1)
+        act = self.get_internal_state()['opponent_action']
 
-    def benchmark():
-        a = AtariPlayer(sys.argv[1], viz=False, height_range=(28, -8))
-        num = a.get_action_space().num_actions()
-        rng = get_rng(num)
-        start = time.time()
-        cnt = 0
-        while True:
-            act = rng.choice(range(num))
-            r, o = a.action(act)
-            a.current_state()
-            cnt += 1
-            if cnt == 5000:
-                break
-        print(time.time() - start)
-
-    if len(sys.argv) == 3 and sys.argv[2] == 'benchmark':
-        import threading
-        import multiprocessing
-        for k in range(3):
-            # th = multiprocessing.Process(target=benchmark)
-            th = threading.Thread(target=benchmark)
-            th.start()
-            time.sleep(0.02)
-        benchmark()
-    else:
-        a = AtariPlayer(sys.argv[1],
-                        viz=0.03, height_range=(28, -8))
-        num = a.get_action_space().num_actions()
-        rng = get_rng(num)
-        import time
-        while True:
-            # im = a.grab_image()
-            # cv2.imshow(a.romname, im)
-            act = rng.choice(range(num))
-            print(act)
-            r, o = a.action(act)
-            a.current_state()
-            # time.sleep(0.1)
-            print(r, o)
+        return (ret.astype('uint8'), act)  # to save some memory
+     

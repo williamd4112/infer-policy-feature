@@ -22,13 +22,13 @@ from tensorpack.tfutils import symbolic_functions as symbf
 from tensorpack.RL import *
 import tensorflow as tf
 
-from DQNModel import Model as DQNModel
+from DQNPIModel_keep_state import Model as DQNModel
 import common
 from common import play_model, Evaluator, eval_model_multithread
 from soccer_env import SoccerPlayer
-from expreplay import ExpReplay
+from augment_expreplay_keep_state import AugmentExpReplay
 
-BATCH_SIZE = 64
+BATCH_SIZE = None
 IMAGE_SIZE = (84, 84)
 FRAME_HISTORY = None
 ACTION_REPEAT = None   # aka FRAME_SKIP
@@ -39,12 +39,13 @@ GAMMA = 0.99
 MEMORY_SIZE = 1e6
 # will consume at least 1e6 * 84 * 84 bytes == 6.6G memory.
 INIT_MEMORY_SIZE = 50000
-STEPS_PER_EPOCH = 10000 // UPDATE_FREQ * 10  # each epoch is 100k played frames
+STEPS_PER_EPOCH = 1000 // UPDATE_FREQ * 10  # each epoch is 100k played frames
 EVAL_EPISODE = 50
 
 NUM_ACTIONS = None
 METHOD = None
 FIELD = None
+
 
 def get_player(viz=False, train=False):
     logger.info('Frame skip = %d, Field = %s' % (ACTION_REPEAT, FIELD))
@@ -53,9 +54,8 @@ def get_player(viz=False, train=False):
         # create a new axis to stack history on pl = MapPlayerState(pl, lambda im: im[:, :, np.newaxis])
         # in training, history is taken care of in expreplay buffer
         pl = HistoryFramePlayer(pl, FRAME_HISTORY)
-
-        pl = PreventStuckPlayer(pl, 30, 1)
-    pl = LimitLengthPlayer(pl, 30000)
+        pl = PreventStuckPlayer(pl, 5, 1)
+    #pl = LimitLengthPlayer(pl, 30000)
     return pl
 
 
@@ -78,30 +78,44 @@ class Model(DQNModel):
                  .Conv2D('conv1', out_channel=64, kernel_shape=4, stride=2, padding='VALID')
                  .Conv2D('conv2', out_channel=64, kernel_shape=3, stride=1, padding='VALID')
                  .Conv2D('conv3', out_channel=512, kernel_shape=7, stride=1, padding='VALID'))()
-
-                 # architecture used for the figure in the README, slower but takes fewer iterations to converge
-                 # .Conv2D('conv0', out_channel=32, kernel_shape=5)
-                 # .MaxPooling('pool0', 2)
-                 # .Conv2D('conv1', out_channel=32, kernel_shape=5)
-                 # .MaxPooling('pool1', 2)
-                 # .Conv2D('conv2', out_channel=64, kernel_shape=4)
-                 # .MaxPooling('pool2', 2)
-                 # .Conv2D('conv3', out_channel=64, kernel_shape=3)
-
                  # .FullyConnected('fc0', 512, nl=LeakyReLU)())
-            l = symbf.batch_flatten(l)
+            l = symbf.batch_flatten(l)            
 
-            # TODO: Add recurrent part 
-            h_size = 512
-            l = tf.reshape(l, [self.batch_size, self.channel, h_size])
+        with tf.variable_scope('pi'):
+            with argscope(Conv2D, nl=PReLU.symbolic_function, use_bias=True), \
+                    argscope(LeakyReLU, alpha=0.01):
+                pi_l = (LinearWrap(image)
+                     # Nature architecture
+                     .Conv2D('conv0', out_channel=32, kernel_shape=8, stride=4, padding='VALID')
+                     .Conv2D('conv1', out_channel=64, kernel_shape=4, stride=2, padding='VALID')
+                     .Conv2D('conv2', out_channel=64, kernel_shape=3, stride=1, padding='VALID')
+                     .Conv2D('conv3', out_channel=512, kernel_shape=7, stride=1, padding='VALID'))()
+                     # .FullyConnected('fc0', 512, nl=LeakyReLU)())
+                pi_l = symbf.batch_flatten(pi_l)            
+            pi_l = tf.reshape(pi_l, [self.batch_size, self.channel, 512])
+            pi_cell = tf.nn.rnn_cell.LSTMCell(num_units=512, state_is_tuple=True)
+            pi_l, pi_rnn_state_out = tf.nn.dynamic_rnn(inputs=pi_l,
+                                initial_state=tf.contrib.rnn.LSTMStateTuple(self.pi_rnn_state[:, 0, :], self.pi_rnn_state[:, 1, :]), 
+                                cell=pi_cell, 
+                                dtype=tf.float32, scope='rnn')
+            pi_h = pi_l[:, -1, :]
+            pi_y = FullyConnected('fc2', pi_h, self.num_actions, nl=tf.identity)
+ 
+        
+        # Recurrent part
+        h_size = self.h_size
+        l = tf.reshape(l, [self.batch_size, self.channel, h_size])
+        cell = tf.nn.rnn_cell.LSTMCell(num_units=h_size, 
+                                    state_is_tuple=True)
+        l, q_rnn_state_out = tf.nn.dynamic_rnn(inputs=l,
+                                initial_state=tf.contrib.rnn.LSTMStateTuple(self.q_rnn_state[:, 0, :], self.q_rnn_state[:, 1, :]), 
+                                cell=cell, 
+                                dtype=tf.float32, 
+                                scope='rnn')
+        l = l[:, -1, :]
 
-            cell = tf.nn.rnn_cell.LSTMCell(num_units=h_size, 
-                                        state_is_tuple=True)
-            self.state_in = None
-      
-            l, self.rnn_state = tf.nn.dynamic_rnn(
-                inputs=l, cell=cell, dtype=tf.float32, initial_state=self.state_in, scope='rnn')
-            l = l[:, -1, :] 
+        # Merge
+        l = tf.multiply(l, pi_h)
               
         if self.method != 'Dueling':
             Q = FullyConnected('fct', l, self.num_actions, nl=tf.identity)
@@ -110,13 +124,14 @@ class Model(DQNModel):
             V = FullyConnected('fctV', l, 1, nl=tf.identity)
             As = FullyConnected('fctA', l, self.num_actions, nl=tf.identity)
             Q = tf.add(As, V - tf.reduce_mean(As, 1, keep_dims=True))
-        return tf.identity(Q, name='Qvalue')
+        return tf.identity(Q, name='Qvalue'), tf.identity(pi_y, name='Pivalue'), \
+                tf.identity(q_rnn_state_out, name='q_rnn_state_out'), tf.identity(pi_rnn_state_out, name='pi_rnn_state_out')
 
 
 def get_config():
     M = Model()
-    expreplay = ExpReplay(
-        predictor_io_names=(['state'], ['Qvalue']),
+    expreplay = AugmentExpReplay(
+        predictor_io_names=(['state', 'q_rnn_state_in', 'pi_rnn_state_in'], ['Qvalue', 'q_rnn_state_out', 'pi_rnn_state_out']),
         player=get_player(train=True),
         state_shape=IMAGE_SIZE,
         batch_size=BATCH_SIZE,
@@ -136,20 +151,19 @@ def get_config():
                 every_k_steps=10000 // UPDATE_FREQ),    # update target network every 10k steps
             expreplay,
             ScheduledHyperParamSetter('learning_rate',
-                                      [(60, 4e-4), (100, 2e-4)]),
+                                      [(200, 4e-4), (300, 2e-4)]),
             ScheduledHyperParamSetter(
                 ObjAttrParam(expreplay, 'exploration'),
-                [(0, 1), (10, 0.1), (320, 0.01)],   # 1->0.1 in the first million steps
+                [(0, 1), (100, 0.1), (3200, 0.01)],   # 1->0.1 in the first million steps
                 interp='linear'),
             HumanHyperParamSetter('learning_rate'),
         ],
         model=M,
         steps_per_epoch=STEPS_PER_EPOCH,
-        max_epoch=1000,
+        max_epoch=400,
         # run the simulator on a separate GPU if available
         predict_tower=[1] if get_nr_gpu() > 1 else [0],
     )
-
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -162,7 +176,7 @@ if __name__ == '__main__':
     parser.add_argument('--skip', help='act repeat', type=int, required=True)
     parser.add_argument('--field', help='field type', type=str, choices=['small', 'large'], required=True)
     parser.add_argument('--hist_len', help='hist len', type=int, required=True)
-
+    parser.add_argument('--batch_size', help='batch size', type=int, required=True)
     args = parser.parse_args()
 
     if args.gpu:
@@ -171,8 +185,8 @@ if __name__ == '__main__':
 
     ACTION_REPEAT = args.skip
     FIELD = args.field
-    FRAME_HISTORY = args.hist_len 
-
+    FRAME_HISTORY = args.hist_len
+    BATCH_SIZE = args.batch_size
     # set num_actions
     NUM_ACTIONS = SoccerPlayer().get_action_space().num_actions()
 
@@ -181,16 +195,16 @@ if __name__ == '__main__':
         cfg = PredictConfig(
             model=Model(),
             session_init=get_model_loader(args.load),
-            input_names=['state'],
-            output_names=['Qvalue'])
+            input_names=['state', 'q_rnn_state_in', 'pi_rnn_state_in'],
+            output_names=['Qvalue', 'q_rnn_state_out', 'pi_rnn_state_out'])
         if args.task == 'play':
             play_model(cfg, get_player(viz=1))
         elif args.task == 'eval':
             eval_model_multithread(cfg, EVAL_EPISODE, get_player)
     else:
         logger.set_logger_dir(
-            os.path.join('train_log', 'DRQN-field-{}-skip-{}-hist-{}-{}'.format(
-                args.field, args.skip, args.hist_len, os.path.basename('soccer').split('.')[0])))
+            os.path.join('train_log', 'DRQNPI-old-keep-state-no-fc-small-field-{}-skip-{}-hist-{}-batch-{}-{}'.format(
+                args.field, args.skip, args.hist_len, args.batch_size, os.path.basename('soccer').split('.')[0])))
         config = get_config()
         if args.load:
             config.session_init = SaverRestore(args.load)
