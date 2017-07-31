@@ -29,7 +29,7 @@ from augment_expreplay import AugmentExpReplay
 
 from tensorpack.tfutils import symbolic_functions as symbf
 
-BATCH_SIZE = 64
+BATCH_SIZE = 32
 IMAGE_SIZE = (84, 84)
 FRAME_HISTORY = 4
 ACTION_REPEAT = 4   # aka FRAME_SKIP
@@ -40,7 +40,7 @@ GAMMA = 0.99
 
 MEMORY_SIZE = 1e6
 # will consume at least 1e6 * 84 * 84 bytes == 6.6G memory.
-INIT_MEMORY_SIZE = 1e3
+INIT_MEMORY_SIZE = 5e4
 STEPS_PER_EPOCH = 10000 // UPDATE_FREQ * 10  # each epoch is 100k played frames
 EVAL_EPISODE = 50
 
@@ -93,10 +93,12 @@ class Model(DQNModel):
                 pi_l = Conv2D('conv0', image, out_channel=64, kernel_shape=6, stride=2, padding='VALID')
                 pi_l = Conv2D('conv1', pi_l, out_channel=64, kernel_shape=6, stride=2, padding='SAME')
                 pi_l = Conv2D('conv2', pi_l, out_channel=64, kernel_shape=6, stride=2, padding='SAME')
+
             with argscope(FullyConnected, nl=LeakyReLU),\
                     argscope(LeakyReLU, alpha=0.01):
                 pi_l = FullyConnected('fc0', pi_l, 1024)
                 pi_h = FullyConnected('fc1', pi_l, 512)
+
             pi_y = FullyConnected('fc2', pi_h, self.num_actions, nl=tf.identity)
 
         l = tf.multiply(q_l, pi_h)
@@ -105,16 +107,21 @@ class Model(DQNModel):
             Pvar = FullyConnected('vfc0', pi_h, 512, nl=tf.nn.relu)
             Pvar = FullyConnected('vfc1', Pvar, 128)
             Pvar = tf.contrib.layers.batch_norm(Pvar)
+            # Pvar = tf.nn.relu(Pvar)
+            Pvar = LeakyReLU(Pvar, alpha=0.01)
 
-            Plogli = tf.concat([Pvar, l], axis=1)
-            Plogli = FullyConnected('lfc0', Plogli, 512, nl=tf.nn.relu)
-            Plogli = FullyConnected('lfc1', Plogli, 128)
-            Plogli = tf.contrib.layers.batch_norm(Plogli)
-            Plogli = tf.nn.relu(Plogli)
+            # Plivar = tf.concat([Pvar, l], axis=1)
+            # Plivar = FullyConnected('lfc0', Plivar, 512)
+            Plivar = FullyConnected('lfc0', l, 512, nl=tf.nn.relu)
+            Plivar = FullyConnected('lfc1', Plivar, 128)
+            Plivar = tf.contrib.layers.batch_norm(Plivar)
+            # Plivar = tf.nn.relu(Plivar)
+            Plivar = LeakyReLU(Plivar, alpha=0.01)
 
             Pmean = FullyConnected('mfc0', Pvar, 128)
             Pmean = tf.contrib.layers.batch_norm(Pmean)
-            Pmean = tf.nn.relu(Pmean)
+            # Pmean = tf.nn.relu(Pmean)
+            Pmean = LeakyReLU(Pmean, alpha=0.01)
 
         if self.method != 'Dueling':
             Q = FullyConnected('fct', l, self.num_actions, nl=tf.identity)
@@ -125,7 +132,7 @@ class Model(DQNModel):
             Q = tf.add(As, V - tf.reduce_mean(As, 1, keep_dims=True))
 
         return tf.identity(Q, name='Qvalue'), tf.identity(pi_y, name='Pivalue'), \
-                tf.identity(Pmean, name='Pmean'), tf.identity(Pvar, name='Pvar')
+                tf.identity(Pmean, name='Pmean'), tf.identity(Pvar, name='Pvar'), tf.identity(Plivar, name='Plivar')
 
 def get_config():
     M = Model()
@@ -158,8 +165,8 @@ def get_config():
             HumanHyperParamSetter('learning_rate'),
         ],
         model=M,
-        #steps_per_epoch=STEPS_PER_EPOCH,
-        steps_per_epoch=1000,
+        steps_per_epoch=STEPS_PER_EPOCH,
+        #steps_per_epoch=2500,
         max_epoch=1000,
         # run the simulator on a separate GPU if available
         predict_tower=[1] if get_nr_gpu() > 1 else [0],

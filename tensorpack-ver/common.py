@@ -62,7 +62,7 @@ def eval_with_funcs(predictors, nr_eval, get_player_fn):
 
     for k in threads:
         k.start()
-        time.sleep(0.1)  # avoid simulator bugs
+        time.sleep(1.0)  # avoid simulator bugs
     stat = StatCounter()
     try:
         for _ in tqdm(range(nr_eval), **get_tqdm_kwargs()):
@@ -85,13 +85,17 @@ def eval_with_funcs(predictors, nr_eval, get_player_fn):
 
 
 def eval_model_multithread(cfg, nr_eval, get_player_fn):
-    nr_eval = 1000
+    nr_eval = 100000
+    '''
     predfunc = OfflinePredictor(cfg)
     player = get_player_fn()
     scores = []
+    acc = 0
     for ep in range(nr_eval):
-        scores.append(play_one_episode(player, predfunc))
-        print("Epsiode %d:" % ep, scores[-1])
+        s = play_one_episode(player, predfunc)
+        acc += s
+        scores.append(s)
+        print("Epsiode {}: {} (acc : {})".format(ep, scores[-1], acc))
     scores = np.array(scores)
     print('Over %d episodes, Max: %f, Min: %f, Mean: %f' % (nr_eval, scores.max(), scores.min(), scores.mean()))
     '''
@@ -99,7 +103,6 @@ def eval_model_multithread(cfg, nr_eval, get_player_fn):
     NR_PROC = min(multiprocessing.cpu_count() // 2, 8)
     mean, max = eval_with_funcs([func] * NR_PROC, nr_eval, get_player_fn)
     logger.info("Average Score: {}; Max Score: {}".format(mean, max))
-    '''
 
 class Evaluator(Triggerable):
     def __init__(self, nr_eval, input_names, output_names, get_player_fn):

@@ -17,12 +17,13 @@ from tensorpack.tfutils import symbolic_functions as symbf
 ZERO = 1e-8
 
 class Model(ModelDesc):
-    def __init__(self, image_shape, channel, method, num_actions, gamma):
+    def __init__(self, image_shape, channel, method, num_actions, gamma, dist_type='gaussian'):
         self.image_shape = image_shape
         self.channel = channel
         self.method = method
         self.num_actions = num_actions
         self.gamma = gamma
+        self.dist_type = dist_type
 
     def _get_inputs(self):
         # Use a combined state for efficiency.
@@ -44,7 +45,7 @@ class Model(ModelDesc):
         comb_state = tf.cast(comb_state, tf.float32)
         state = tf.slice(comb_state, [0, 0, 0, 0], [-1, -1, -1, self.channel], name='state')
 
-        self.predict_value, pi_value, pi_mean, pi_var = self._get_DQN_prediction(state)
+        self.predict_value, pi_value, pi_mean, pi_var, pi_livar = self._get_DQN_prediction(state)
         if not get_current_tower_context().is_training:
             return
 
@@ -60,7 +61,7 @@ class Model(ModelDesc):
 
         with tf.variable_scope('target'), \
                 collection.freeze_collection([tf.GraphKeys.TRAINABLE_VARIABLES]):
-            targetQ_predict_value, target_pi_value, _, _ = self._get_DQN_prediction(next_state)    # NxA
+            targetQ_predict_value, target_pi_value, _, _, _ = self._get_DQN_prediction(next_state)    # NxA
 
         if self.method != 'Double':
             # DQN
@@ -75,35 +76,57 @@ class Model(ModelDesc):
             best_v = tf.reduce_sum(targetQ_predict_value * predict_onehot, 1)
 
         target = reward + (1.0 - tf.cast(isOver, tf.float32)) * self.gamma * tf.stop_gradient(best_v)
-        # logli( env_encode | o_act_prob)+ H(o_act_prob)
-        pi_std = tf.sqrt(tf.exp(pi_mean))
-        epsilon = (pi_var - pi_mean) / (pi_std + ZERO)
-        logli = tf.reduce_sum(
-                    -0.5 * np.log(2 *np.pi) - tf.log(pi_std + ZERO) - 0.5 * tf.square(epsilon),
+
+        if self.dist_type == 'gaussian' :
+            pi_std = tf.sqrt(tf.exp(pi_mean))
+            epsilon = (pi_livar - pi_mean) / (pi_std + ZERO)
+            logli = tf.reduce_sum(
+                        -0.5 * np.log(2 *np.pi) - tf.log(pi_std + ZERO) - 0.5 * tf.square(epsilon),
+                        reduction_indices=1
+                     )
+
+            H = -tf.reduce_sum(
+                    -0.5 * np.log(2 * np.pi) - tf.log(1 + ZERO) - 0.5 * tf.square(pi_var / (1 + ZERO)),
                     reduction_indices=1
                 )
-        logli = tf.reduce_mean(logli, name='logli')
-        H = -tf.reduce_sum(
-                -0.5 * np.log(2 * np.pi) - tf.log(1 + ZERO) - 0.5 * tf.square(pi_var / (1 + ZERO)),
-                reduction_indices=1
-            )
-        H = tf.reduce_mean(H, name='H')
-        mi_est = 0.1 * -(H + logli)
+        else :
+            # categorical
+            logli = tf.reduce_sum(
+                        tf.log(act_prob + ZERO) * act_var,
+                        reduction_indices=1
+                    )
+            H = -tf.reduce_sum(
+                    act_prob * tf.log(act_prob + ZERO),
+                    reduction_indices=1
+                )
 
-        q_cost = (symbf.huber_loss(target - pred_action_value))
-        pi_cost = (tf.nn.softmax_cross_entropy_with_logits(labels=action_o_one_hot, logits=pi_value, name='pi_cost'))
-        self.cost = tf.reduce_mean(q_cost + pi_cost + mi_est, name='cost')
+        reg_pvar = tf.reduce_mean(tf.reduce_sum(tf.abs(pi_mean) + tf.abs(pi_var) + tf.abs(pi_livar), axis=1))
+        logli = tf.reduce_mean(logli, name='logli')
+        H = tf.reduce_mean(H, name='H')
+        mi_est = -(H + logli)
+
+        q_cost = tf.reduce_mean(symbf.huber_loss(target - pred_action_value), name='q_cost')
+        pi_cost = tf.reduce_mean(
+                    tf.nn.softmax_cross_entropy_with_logits(labels=action_o_one_hot, logits=pi_value, name='pi_cost'),
+                    name='pi_cost'
+                )
+        alpha = 0.01
+        beta = 0.01
+        self.cost = tf.reduce_mean(q_cost + beta * pi_cost + alpha * mi_est, name='cost')
 
         summary.add_param_summary(('conv.*/W', ['histogram', 'rms']),
                                   ('fc.*/W', ['histogram', 'rms']))   # monitor all W
         summary.add_moving_summary(self.cost)
-        summary.add_moving_summary(H)
+        summary.add_moving_summary(reg_pvar)
         summary.add_moving_summary(logli)
+        summary.add_moving_summary(q_cost)
+        summary.add_moving_summary(pi_cost)
+        summary.add_moving_summary(H)
 
 
 
     def _get_optimizer(self):
-        lr = symbf.get_scalar_var('learning_rate', 1e-3, summary=True)
+        lr = symbf.get_scalar_var('learning_rate', 1e-4, summary=True)
         opt = tf.train.AdamOptimizer(lr, epsilon=1e-3)
         return optimizer.apply_grad_processors(
             opt, [gradproc.GlobalNormClip(10), gradproc.SummaryGradient()])

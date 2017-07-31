@@ -38,15 +38,17 @@ GAMMA = 0.99
 MEMORY_SIZE = 1e6
 # will consume at least 1e6 * 84 * 84 bytes == 6.6G memory.
 INIT_MEMORY_SIZE = 5e4
+INIT_EXP = 1.0
 STEPS_PER_EPOCH = 10000 // UPDATE_FREQ * 10  # each epoch is 100k played frames
 EVAL_EPISODE = 50
 
 NUM_ACTIONS = None
 METHOD = None
+FIELD = 'large'
 
 
 def get_player(viz=False, train=False):
-    pl = SoccerPlayer(image_shape=IMAGE_SIZE[::-1], viz=viz, frame_skip=ACTION_REPEAT)
+    pl = SoccerPlayer(image_shape=IMAGE_SIZE[::-1], viz=viz, frame_skip=ACTION_REPEAT, field=FIELD)
     if not train:
         # create a new axis to stack history on
         pl = MapPlayerState(pl, lambda im: im[:, :, np.newaxis])
@@ -102,7 +104,7 @@ def get_config():
         batch_size=BATCH_SIZE,
         memory_size=MEMORY_SIZE,
         init_memory_size=INIT_MEMORY_SIZE,
-        init_exploration=1.0,
+        init_exploration=INIT_EXP,
         update_frequency=UPDATE_FREQ,
         history_len=FRAME_HISTORY
     )
@@ -119,7 +121,8 @@ def get_config():
                                       [(60, 4e-4), (100, 2e-4)]),
             ScheduledHyperParamSetter(
                 ObjAttrParam(expreplay, 'exploration'),
-                [(0, 1), (10, 0.1), (320, 0.01)],   # 1->0.1 in the first million steps
+                #[(0, 1), (10, 0.1), (320, 0.01)],   # 1->0.1 in the first million steps
+                [(0, INIT_EXP), (10, 0.1), (320, 0.01)],   # 1->0.1 in the first million steps
                 interp='linear'),
             HumanHyperParamSetter('learning_rate'),
         ],
@@ -137,6 +140,10 @@ if __name__ == '__main__':
     parser.add_argument('--load', help='load model')
     parser.add_argument('--task', help='task to perform',
                         choices=['play', 'eval', 'train'], default='train')
+    parser.add_argument('--exp', help='init exp', default=1.0)
+    parser.add_argument('--skip', help='frame skip', default=4)
+    parser.add_argument('--stack', help='stacked frame', default=4)
+    parser.add_argument('--batch', help='batch size', default=64)
     parser.add_argument('--algo', help='algorithm',
                         choices=['DQN', 'Double', 'Dueling'], default='DQN')
     args = parser.parse_args()
@@ -144,6 +151,10 @@ if __name__ == '__main__':
     if args.gpu:
         os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
     METHOD = args.algo
+    FRAME_HISTORY = int(args.stack)
+    ACTION_REPEAT = int(args.skip)   # aka FRAME_SKIP
+    BATCH_SIZE = int(args.batch)
+    INIT_EXP = float(args.exp)
 
     # set num_actions
     NUM_ACTIONS = SoccerPlayer().get_action_space().num_actions()
