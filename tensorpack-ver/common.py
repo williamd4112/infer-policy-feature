@@ -85,13 +85,14 @@ def eval_with_funcs(predictors, nr_eval, get_player_fn):
 
 
 def eval_model_multithread(cfg, nr_eval, get_player_fn):
-    nr_eval = 1000
+    nr_eval = 100000
     predfunc = OfflinePredictor(cfg)
     player = get_player_fn()
     scores = []
     for ep in range(nr_eval):
         scores.append(play_one_episode(player, predfunc))
-        print("Epsiode %d:" % ep, scores[-1])
+        scores_ = np.asarray(scores)
+        print('%d: Max: %f, Min: %f, Mean: %f' % (ep, scores_.max(), scores_.min(), scores_.mean()))
     scores = np.array(scores)
     print('Over %d episodes, Max: %f, Min: %f, Mean: %f' % (nr_eval, scores.max(), scores.min(), scores.mean()))
     '''

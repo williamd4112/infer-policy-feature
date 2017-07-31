@@ -51,7 +51,8 @@ def get_player(viz=False, train=False):
     logger.info('Frame skip = %d, Field = %s' % (ACTION_REPEAT, FIELD))
     pl = SoccerPlayer(image_shape=IMAGE_SIZE[::-1], viz=viz, frame_skip=ACTION_REPEAT, field=FIELD)
     if not train:
-        # create a new axis to stack history on pl = MapPlayerState(pl, lambda im: im[:, :, np.newaxis])
+        # create a new axis to stack history on 
+        pl = MapPlayerState(pl, lambda im: im[:, :, np.newaxis])
         # in training, history is taken care of in expreplay buffer
         pl = HistoryFramePlayer(pl, FRAME_HISTORY)
         pl = PreventStuckPlayer(pl, 5, 1)

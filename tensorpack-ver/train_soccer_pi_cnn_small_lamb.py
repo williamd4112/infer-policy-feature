@@ -47,6 +47,7 @@ NUM_ACTIONS = None
 METHOD = None
 FIELD = None
 LR = None
+LAMB = None
 
 def get_player(viz=False, train=False):
     pl = SoccerPlayer(image_shape=IMAGE_SIZE[::-1], viz=viz, frame_skip=ACTION_REPEAT, field=FIELD)
@@ -63,7 +64,7 @@ def get_player(viz=False, train=False):
 
 class Model(DQNModel):
     def __init__(self):
-        super(Model, self).__init__(IMAGE_SIZE, FRAME_HISTORY, METHOD, NUM_ACTIONS, GAMMA, LR)
+        super(Model, self).__init__(IMAGE_SIZE, FRAME_HISTORY, METHOD, NUM_ACTIONS, GAMMA, LR, LAMB)
 
     def _get_DQN_prediction(self, image):
         """ image: [0,255]"""
@@ -153,7 +154,7 @@ if __name__ == '__main__':
     parser.add_argument('--hist_len', help='hist len', type=int, required=True)
     parser.add_argument('--batch_size', help='batch size', type=int, required=True)
     parser.add_argument('--lr', help='lr', type=float, required=True)
-
+    parser.add_argument('--lamb', help='lamb', type=float, required=True)
     args = parser.parse_args()
 
     if args.gpu:
@@ -165,6 +166,7 @@ if __name__ == '__main__':
     FRAME_HISTORY = args.hist_len
     BATCH_SIZE = args.batch_size
     LR = args.lr
+    LAMB = args.lamb
 
     # set num_actions
     NUM_ACTIONS = SoccerPlayer().get_action_space().num_actions()
@@ -182,8 +184,8 @@ if __name__ == '__main__':
             eval_model_multithread(cfg, EVAL_EPISODE, get_player)
     else:
         logger.set_logger_dir(
-            os.path.join('train_log', 'DQNPI-small-field-{}-skip-{}-hist-{}-batch-{}-lr-{}-{}'.format(
-                args.field, args.skip, args.hist_len, args.batch_size, args.lr, os.path.basename('soccer').split('.')[0])))
+            os.path.join('train_log', 'DQNPI-small-field-{}-skip-{}-hist-{}-batch-{}-lr-{}-lamb-{}-{}'.format(
+                args.field, args.skip, args.hist_len, args.batch_size, args.lr, args.lamb, os.path.basename('soccer').split('.')[0])))
         config = get_config()
         if args.load:
             config.session_init = SaverRestore(args.load)

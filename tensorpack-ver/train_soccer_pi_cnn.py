@@ -141,7 +141,7 @@ def get_config():
         ],
         model=M,
         steps_per_epoch=STEPS_PER_EPOCH,
-        max_epoch=400,
+        max_epoch=10000,
         # run the simulator on a separate GPU if available
         predict_tower=[1] if get_nr_gpu() > 1 else [0],
     )
