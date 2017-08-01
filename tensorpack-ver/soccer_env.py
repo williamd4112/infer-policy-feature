@@ -76,9 +76,9 @@ class SoccerPlayer(RLEnvironment):
         self.height_range = height_range
         self.image_shape = image_shape
         
-        self.info = {}
+        self.last_info = {}
         opponent_act = self.env.state.get_agent_action(self.computer_agent_index)
-        self.info['opponent_action'] = self.env.actions.index(opponent_act if opponent_act else 'STAND')
+        self.last_info['opponent_action'] = self.env.actions.index(opponent_act if opponent_act else 'STAND')
 
     
         self.current_episode_score = StatCounter()
