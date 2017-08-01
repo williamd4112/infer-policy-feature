@@ -75,7 +75,12 @@ class SoccerPlayer(RLEnvironment):
         self.nullop_start = nullop_start
         self.height_range = height_range
         self.image_shape = image_shape
+        
+        self.info = {}
+        opponent_act = self.env.state.get_agent_action(self.computer_agent_index)
+        self.info['opponent_action'] = self.env.actions.index(opponent_act if opponent_act else 'STAND')
 
+    
         self.current_episode_score = StatCounter()
         self.restart_episode()
 
