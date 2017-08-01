@@ -145,7 +145,7 @@ if __name__ == '__main__':
     parser.add_argument('--field', help='field type', type=str, choices=['small', 'large'], required=True)
     parser.add_argument('--hist_len', help='hist len', type=int, required=True)
     parser.add_argument('--batch_size', help='batch size', type=int, required=True)
-    parser.add_argument('--lr', help='lr', type=float, required=True)
+    parser.add_argument('--lr', help='lr', type=float, default=1e-3)
 
     args = parser.parse_args()
 
