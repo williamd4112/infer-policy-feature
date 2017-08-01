@@ -130,13 +130,19 @@ class SoccerPlayer(RLEnvironment):
         :returns: (reward, isOver)
         """
         r = 0
+        info = {}
         for k in range(self.frame_skip):
             if k == self.frame_skip - 1:
                 self.last_raw_screen = self._grab_raw_image()
             ret = self.env.take_action(self.env.actions[act])
+            if k == 0:
+                opponent_act = self.env.state.get_agent_action(self.computer_agent_index)
+                info['opponent_action'] = self.env.actions.index(opponent_act if opponent_act else 'STAND')
+        
             r += ret.reward
             if self.env.state.is_terminal():
                 break
+        self.last_info = info
 
         self.current_episode_score.feed(r)
         isOver = self.env.state.is_terminal()
@@ -146,10 +152,7 @@ class SoccerPlayer(RLEnvironment):
         return (r, isOver)
 
     def get_internal_state(self):
-        info = {}
-        opponent_act = self.env.state.get_agent_action(self.computer_agent_index)
-        info['opponent_action'] = self.env.actions.index(opponent_act if opponent_act else 'STAND')
-        return info
+        return self.last_info
 
 class SoccerPlayerWithInternalState(SoccerPlayer):
     def current_state(self):
