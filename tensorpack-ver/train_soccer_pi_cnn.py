@@ -40,8 +40,12 @@ GAMMA = 0.99
 MEMORY_SIZE = 1e6
 # will consume at least 1e6 * 84 * 84 bytes == 6.6G memory.
 INIT_MEMORY_SIZE = 5e4
+INIT_EXP = 1.0
 STEPS_PER_EPOCH = 10000 // UPDATE_FREQ * 10  # each epoch is 100k played frames
 EVAL_EPISODE = 50
+LAMB = 1.0
+LR = 1e-3
+
 
 NUM_ACTIONS = None
 METHOD = None
@@ -62,7 +66,7 @@ def get_player(viz=False, train=False):
 
 class Model(DQNModel):
     def __init__(self):
-        super(Model, self).__init__(IMAGE_SIZE, FRAME_HISTORY, METHOD, NUM_ACTIONS, GAMMA)
+        super(Model, self).__init__(IMAGE_SIZE, FRAME_HISTORY, METHOD, NUM_ACTIONS, GAMMA, lr=LR, lamb=LAMB)
 
     def _get_DQN_prediction(self, image):
         """ image: [0,255]"""
@@ -132,7 +136,7 @@ def get_config():
                 every_k_steps=1000 // UPDATE_FREQ),    # update target network every 10k steps
             expreplay,
             ScheduledHyperParamSetter('learning_rate',
-                                      [(20, 4e-4), (30, 2e-4)]),
+                                      [(20, 4e-4), (40, 2e-4)]),
             ScheduledHyperParamSetter(
                 ObjAttrParam(expreplay, 'exploration'),
                 [(0, 1), (40, 0.1), (80, 0.01)],   # 1->0.1 in the first million steps
@@ -159,21 +163,19 @@ if __name__ == '__main__':
     parser.add_argument('--field', help='field type', type=str, choices=['small', 'large'], required=True)
     parser.add_argument('--hist_len', help='hist len', type=int, required=True)
     parser.add_argument('--batch_size', help='batch size', type=int, required=True)
+    parser.add_argument('--lamb', dest='lamb', type=float, default=1.0)
 
     args = parser.parse_args()
 
     if args.gpu:
         os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
     METHOD = args.algo
-    FRAME_HISTORY = int(args.stack)
-    ACTION_REPEAT = int(args.skip)   # aka FRAME_SKIP
-    BATCH_SIZE = int(args.batch)
-    INIT_EXP = float(args.exp)
 
     ACTION_REPEAT = args.skip
     FIELD = args.field
     FRAME_HISTORY = args.hist_len
     BATCH_SIZE = args.batch_size
+    LAMB = args.lamb
 
     # set num_actions
     NUM_ACTIONS = SoccerPlayer().get_action_space().num_actions()

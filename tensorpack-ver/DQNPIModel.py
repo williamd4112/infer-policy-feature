@@ -75,7 +75,7 @@ class Model(ModelDesc):
             best_v = tf.reduce_sum(targetQ_predict_value * predict_onehot, 1)
 
         target = reward + (1.0 - tf.cast(isOver, tf.float32)) * self.gamma * tf.stop_gradient(best_v)
-        
+
         q_cost = (symbf.huber_loss(target - pred_action_value))
         pi_cost = (tf.nn.softmax_cross_entropy_with_logits(labels=action_o_one_hot, logits=pi_value))
         self.cost = tf.reduce_mean(q_cost + self.lamb * pi_cost)

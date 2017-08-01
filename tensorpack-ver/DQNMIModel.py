@@ -17,12 +17,15 @@ from tensorpack.tfutils import symbolic_functions as symbf
 ZERO = 1e-8
 
 class Model(ModelDesc):
-    def __init__(self, image_shape, channel, method, num_actions, gamma, dist_type='gaussian'):
+    def __init__(self, image_shape, channel, method, num_actions, gamma, dist_type='gaussian', lr=1e-3, lamb=0.01, alpha=0.01):
         self.image_shape = image_shape
         self.channel = channel
         self.method = method
         self.num_actions = num_actions
         self.gamma = gamma
+        self.lr = lr
+        self.lamb = lamb
+        self.alpha = alpha
         self.dist_type = dist_type
 
     def _get_inputs(self):
@@ -111,9 +114,7 @@ class Model(ModelDesc):
                     tf.nn.softmax_cross_entropy_with_logits(labels=action_o_one_hot, logits=pi_value, name='pi_cost'),
                     name='pi_cost'
                 )
-        alpha = 0.01
-        beta = 0.01
-        self.cost = tf.reduce_mean(q_cost + beta * pi_cost + alpha * mi_est + 0.1 * reg_pvar, name='cost')
+        self.cost = tf.reduce_mean(q_cost + self.lamb * pi_cost + self.alpha * mi_est + 0.1 * reg_pvar, name='cost')
 
         summary.add_param_summary(('conv.*/W', ['histogram', 'rms']),
                                   ('fc.*/W', ['histogram', 'rms']))   # monitor all W
@@ -127,7 +128,7 @@ class Model(ModelDesc):
 
 
     def _get_optimizer(self):
-        lr = symbf.get_scalar_var('learning_rate', 1e-4, summary=True)
+        lr = symbf.get_scalar_var('learning_rate', self.lr, summary=True)
         opt = tf.train.AdamOptimizer(lr, epsilon=1e-3)
         return optimizer.apply_grad_processors(
             opt, [gradproc.GlobalNormClip(10), gradproc.SummaryGradient()])

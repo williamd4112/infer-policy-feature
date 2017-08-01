@@ -43,12 +43,15 @@ MEMORY_SIZE = 1e6
 INIT_MEMORY_SIZE = 5e4
 STEPS_PER_EPOCH = 10000 // UPDATE_FREQ * 10  # each epoch is 100k played frames
 EVAL_EPISODE = 50
+LAMB = 1.0
+LR = 1e-3
 
 NUM_ACTIONS = None
 METHOD = None
+FIELD = None
 
 def get_player(viz=False, train=False):
-    pl = SoccerPlayer(image_shape=IMAGE_SIZE[::-1], viz=viz, frame_skip=ACTION_REPEAT, field='large')
+    pl = SoccerPlayer(image_shape=IMAGE_SIZE[::-1], viz=viz, frame_skip=ACTION_REPEAT, field=FIELD)
     if not train:
         # create a new axis to stack history on
         pl = MapPlayerState(pl, lambda im: im[:, :, np.newaxis])
@@ -62,7 +65,8 @@ def get_player(viz=False, train=False):
 
 class Model(DQNModel):
     def __init__(self):
-        super(Model, self).__init__(IMAGE_SIZE, FRAME_HISTORY, METHOD, NUM_ACTIONS, GAMMA)
+        super(Model, self).__init__(IMAGE_SIZE, FRAME_HISTORY, METHOD, NUM_ACTIONS, GAMMA,
+                                        lr=LR, lamb=LAMB)
 
     def _get_DQN_prediction(self, image):
         """ image: [0,255]"""
@@ -104,9 +108,9 @@ class Model(DQNModel):
                 pi_h = FullyConnected('fc1', pi_l, 512)
             pi_h = tf.reshape(pi_h, [self.batch_size, self.channel, 512])
             pi_h, _ = tf.nn.dynamic_rnn(inputs=pi_h,
-                                        cell=tf.nn.rnn_cell.LSTMCell(num_units=512, state_is_tuple=True),
-                                        dtype=tf.float32,
-                                        scope='rnn')
+                                cell=tf.nn.rnn_cell.LSTMCell(num_units=512, state_is_tuple=True),
+                                dtype=tf.float32, scope='rnn'
+                    )
 
             pi_y = FullyConnected('fc2', pi_h, self.num_actions, nl=tf.identity)
 
@@ -166,15 +170,16 @@ def get_config():
                 every_k_steps=10000 // UPDATE_FREQ),    # update target network every 10k steps
             expreplay,
             ScheduledHyperParamSetter('learning_rate',
-                                      [(60, 4e-4), (100, 2e-4)]),
+                                      [(20, 4e-4), (40, 2e-4)]),
             ScheduledHyperParamSetter(
                 ObjAttrParam(expreplay, 'exploration'),
-                [(0, 1), (10, 0.1), (320, 0.01)],   # 1->0.1 in the first million steps
+                [(0, 1), (40, 0.1), (80, 0.01)],   # 1->0.1 in the first million steps
                 interp='linear'),
             HumanHyperParamSetter('learning_rate'),
         ],
         model=M,
         steps_per_epoch=STEPS_PER_EPOCH,
+        #steps_per_epoch=2500,
         max_epoch=1000,
         # run the simulator on a separate GPU if available
         predict_tower=[1] if get_nr_gpu() > 1 else [0],
@@ -185,19 +190,27 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--gpu', help='comma separated list of GPU(s) to use.')
     parser.add_argument('--load', help='load model')
-    parser.add_argument('--skip', help='frame skip', default=4)
-    parser.add_argument('--stack', help='stacked frame', default=4)
     parser.add_argument('--task', help='task to perform',
                         choices=['play', 'eval', 'train'], default='train')
     parser.add_argument('--algo', help='algorithm',
                         choices=['DQN', 'Double', 'Dueling'], default='DQN')
+    parser.add_argument('--skip', help='act repeat', type=int, required=True)
+    parser.add_argument('--field', help='field type', type=str, choices=['small', 'large'], required=True)
+    parser.add_argument('--hist_len', help='hist len', type=int, required=True)
+    parser.add_argument('--batch_size', help='batch size', type=int, required=True)
+    parser.add_argument('--lamb', dest='lamb', type=float, default=0.01)
+
     args = parser.parse_args()
 
     if args.gpu:
         os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
     METHOD = args.algo
-    FRAME_HISTORY = int(args.stack)
-    ACTION_REPEAT = int(args.skip)   # aka FRAME_SKIP
+
+    ACTION_REPEAT = args.skip
+    FIELD = args.field
+    FRAME_HISTORY = args.hist_len
+    BATCH_SIZE = args.batch_size
+    LAMB = args.lamb
 
     # set num_actions
     NUM_ACTIONS = SoccerPlayer().get_action_space().num_actions()
