@@ -27,10 +27,10 @@ from common import play_model, Evaluator, eval_model_multithread
 from soccer_env import SoccerPlayer
 from expreplay import ExpReplay
 
-BATCH_SIZE = 64
+BATCH_SIZE = None
 IMAGE_SIZE = (84, 84)
 FRAME_HISTORY = 4
-ACTION_REPEAT = 1   # aka FRAME_SKIP
+ACTION_REPEAT = None   # aka FRAME_SKIP
 UPDATE_FREQ = 4
 
 GAMMA = 0.99
@@ -45,7 +45,6 @@ EVAL_EPISODE = 50
 NUM_ACTIONS = None
 METHOD = None
 FIELD = 'large'
-
 
 def get_player(viz=False, train=False):
     pl = SoccerPlayer(image_shape=IMAGE_SIZE[::-1], viz=viz, frame_skip=ACTION_REPEAT, field=FIELD)
@@ -146,6 +145,12 @@ if __name__ == '__main__':
     parser.add_argument('--batch', help='batch size', default=64)
     parser.add_argument('--algo', help='algorithm',
                         choices=['DQN', 'Double', 'Dueling'], default='DQN')
+    parser.add_argument('--skip', help='act repeat', type=int, required=True)
+    parser.add_argument('--field', help='field type', type=str, choices=['small', 'large'], required=True)
+    parser.add_argument('--hist_len', help='hist len', type=int, required=True)
+    parser.add_argument('--batch_size', help='batch size', type=int, required=True)
+    parser.add_argument('--lr', help='lr', type=float, required=True)
+
     args = parser.parse_args()
 
     if args.gpu:
@@ -155,6 +160,14 @@ if __name__ == '__main__':
     ACTION_REPEAT = int(args.skip)   # aka FRAME_SKIP
     BATCH_SIZE = int(args.batch)
     INIT_EXP = float(args.exp)
+
+    ACTION_REPEAT = args.skip
+    FIELD = args.field
+    FRAME_HISTORY = args.hist_len
+    BATCH_SIZE = args.batch_size
+    LR = args.lr
+
+
 
     # set num_actions
     NUM_ACTIONS = SoccerPlayer().get_action_space().num_actions()

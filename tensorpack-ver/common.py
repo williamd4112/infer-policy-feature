@@ -86,19 +86,6 @@ def eval_with_funcs(predictors, nr_eval, get_player_fn):
 
 def eval_model_multithread(cfg, nr_eval, get_player_fn):
     nr_eval = 100000
-    '''
-    predfunc = OfflinePredictor(cfg)
-    player = get_player_fn()
-    scores = []
-    acc = 0
-    for ep in range(nr_eval):
-        s = play_one_episode(player, predfunc)
-        acc += s
-        scores.append(s)
-        print("Epsiode {}: {} (acc : {})".format(ep, scores[-1], acc))
-    scores = np.array(scores)
-    print('Over %d episodes, Max: %f, Min: %f, Mean: %f' % (nr_eval, scores.max(), scores.min(), scores.mean()))
-    '''
     func = OfflinePredictor(cfg)
     NR_PROC = min(multiprocessing.cpu_count() // 2, 8)
     mean, max = eval_with_funcs([func] * NR_PROC, nr_eval, get_player_fn)

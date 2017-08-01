@@ -39,7 +39,7 @@ GAMMA = 0.99
 MEMORY_SIZE = 1e6
 # will consume at least 1e6 * 84 * 84 bytes == 6.6G memory.
 INIT_MEMORY_SIZE = 50000
-STEPS_PER_EPOCH = 10000 // UPDATE_FREQ * 10  # each epoch is 100k played frames
+STEPS_PER_EPOCH = 1000 // UPDATE_FREQ * 10  # each epoch is 100k played frames
 EVAL_EPISODE = 50
 
 NUM_ACTIONS = None
@@ -51,7 +51,8 @@ def get_player(viz=False, train=False):
     logger.info('Frame skip = %d, Field = %s' % (ACTION_REPEAT, FIELD))
     pl = SoccerPlayer(image_shape=IMAGE_SIZE[::-1], viz=viz, frame_skip=ACTION_REPEAT, field=FIELD)
     if not train:
-        # create a new axis to stack history on pl = MapPlayerState(pl, lambda im: im[:, :, np.newaxis])
+        # create a new axis to stack history on 
+        pl = MapPlayerState(pl, lambda im: im[:, :, np.newaxis])
         # in training, history is taken care of in expreplay buffer
         pl = HistoryFramePlayer(pl, FRAME_HISTORY)
         pl = PreventStuckPlayer(pl, 5, 1)
@@ -143,16 +144,16 @@ def get_config():
                 every_k_steps=10000 // UPDATE_FREQ),    # update target network every 10k steps
             expreplay,
             ScheduledHyperParamSetter('learning_rate',
-                                      [(20, 4e-4), (30, 2e-4)]),
+                                      [(200, 4e-4), (300, 2e-4)]),
             ScheduledHyperParamSetter(
                 ObjAttrParam(expreplay, 'exploration'),
-                [(0, 1), (10, 0.1), (320, 0.01)],   # 1->0.1 in the first million steps
+                [(0, 1), (100, 0.1), (3200, 0.01)],   # 1->0.1 in the first million steps
                 interp='linear'),
             HumanHyperParamSetter('learning_rate'),
         ],
         model=M,
         steps_per_epoch=STEPS_PER_EPOCH,
-        max_epoch=40,
+        max_epoch=10000,
         # run the simulator on a separate GPU if available
         predict_tower=[1] if get_nr_gpu() > 1 else [0],
     )
@@ -179,6 +180,7 @@ if __name__ == '__main__':
     FIELD = args.field
     FRAME_HISTORY = args.hist_len
     BATCH_SIZE = args.batch_size
+    
     # set num_actions
     NUM_ACTIONS = SoccerPlayer().get_action_space().num_actions()
 
