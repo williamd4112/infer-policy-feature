@@ -139,10 +139,6 @@ if __name__ == '__main__':
     parser.add_argument('--load', help='load model')
     parser.add_argument('--task', help='task to perform',
                         choices=['play', 'eval', 'train'], default='train')
-    parser.add_argument('--exp', help='init exp', default=1.0)
-    parser.add_argument('--skip', help='frame skip', default=4)
-    parser.add_argument('--stack', help='stacked frame', default=4)
-    parser.add_argument('--batch', help='batch size', default=64)
     parser.add_argument('--algo', help='algorithm',
                         choices=['DQN', 'Double', 'Dueling'], default='DQN')
     parser.add_argument('--skip', help='act repeat', type=int, required=True)
@@ -156,18 +152,12 @@ if __name__ == '__main__':
     if args.gpu:
         os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
     METHOD = args.algo
-    FRAME_HISTORY = int(args.stack)
-    ACTION_REPEAT = int(args.skip)   # aka FRAME_SKIP
-    BATCH_SIZE = int(args.batch)
-    INIT_EXP = float(args.exp)
 
     ACTION_REPEAT = args.skip
     FIELD = args.field
     FRAME_HISTORY = args.hist_len
     BATCH_SIZE = args.batch_size
     LR = args.lr
-
-
 
     # set num_actions
     NUM_ACTIONS = SoccerPlayer().get_action_space().num_actions()
