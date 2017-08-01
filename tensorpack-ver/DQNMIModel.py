@@ -89,6 +89,7 @@ class Model(ModelDesc):
                     -0.5 * np.log(2 * np.pi) - tf.log(1 + ZERO) - 0.5 * tf.square(pi_var / (1 + ZERO)),
                     reduction_indices=1
                 )
+            reg_pvar = tf.nn.l2_loss(pi_var, 'l2_pi')
         else :
             # categorical
             logli = tf.reduce_sum(
@@ -112,7 +113,7 @@ class Model(ModelDesc):
                 )
         alpha = 0.01
         beta = 0.01
-        self.cost = tf.reduce_mean(q_cost + beta * pi_cost + alpha * mi_est, name='cost')
+        self.cost = tf.reduce_mean(q_cost + beta * pi_cost + alpha * mi_est + 0.1 * reg_pvar, name='cost')
 
         summary.add_param_summary(('conv.*/W', ['histogram', 'rms']),
                                   ('fc.*/W', ['histogram', 'rms']))   # monitor all W
