@@ -117,11 +117,11 @@ def get_config():
                 every_k_steps=10000 // UPDATE_FREQ),    # update target network every 10k steps
             expreplay,
             ScheduledHyperParamSetter('learning_rate',
-                                      [(60, 4e-4), (100, 2e-4)]),
+                                      [(20, 4e-4), (40, 2e-4)]),
             ScheduledHyperParamSetter(
                 ObjAttrParam(expreplay, 'exploration'),
                 #[(0, 1), (10, 0.1), (320, 0.01)],   # 1->0.1 in the first million steps
-                [(0, INIT_EXP), (10, 0.1), (320, 0.01)],   # 1->0.1 in the first million steps
+                [(0, INIT_EXP), (40, 0.1), (80, 0.01)],   # 1->0.1 in the first million steps
                 interp='linear'),
             HumanHyperParamSetter('learning_rate'),
         ],
