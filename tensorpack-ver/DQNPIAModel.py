@@ -15,12 +15,13 @@ from tensorpack.tfutils import symbolic_functions as symbf
 
 
 class Model(ModelDesc):
-    def __init__(self, image_shape, channel, method, num_actions, gamma):
+    def __init__(self, image_shape, channel, method, num_actions, gamma, lr):
         self.image_shape = image_shape
         self.channel = channel
         self.method = method
         self.num_actions = num_actions
         self.gamma = gamma
+        self.lr = lr
 
     def _get_inputs(self):
         # Use a combined state for efficiency.
@@ -95,10 +96,14 @@ class Model(ModelDesc):
         summary.add_param_summary(('conv.*/W', ['histogram', 'rms']),
                                   ('fc.*/W', ['histogram', 'rms']))   # monitor all W
         summary.add_moving_summary(self.cost)
+        summary.add_moving_summary(tf.reduce_mean(pi_cost, name='pi_cost'))
+        summary.add_moving_summary(tf.reduce_mean(q_cost, name='q_cost'))
 
+        pred = tf.argmax(pi_value, axis=1)
+        summary.add_moving_summary(tf.contrib.metrics.accuracy(pred, action_o_target[:, -1]))
 
     def _get_optimizer(self):
-        lr = symbf.get_scalar_var('learning_rate', 1e-3, summary=True)
+        lr = symbf.get_scalar_var('learning_rate', self.lr, summary=True)
         opt = tf.train.AdamOptimizer(lr, epsilon=1e-3)
         return optimizer.apply_grad_processors(
             opt, [gradproc.GlobalNormClip(10), gradproc.SummaryGradient()])
