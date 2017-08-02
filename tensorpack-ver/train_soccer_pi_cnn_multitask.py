@@ -24,7 +24,7 @@ import tensorflow as tf
 from DQNPIModel_multitask import Model as DQNModel
 import common
 from common import play_model, Evaluator, eval_model_multithread
-from soccer_env import SoccerPlayer
+from soccer_env_multitask import SoccerPlayer
 from augment_expreplay_multitask import AugmentExpReplay
 
 from tensorpack.tfutils import symbolic_functions as symbf
@@ -44,6 +44,7 @@ STEPS_PER_EPOCH = 1000 // UPDATE_FREQ * 10  # each epoch is 100k played frames
 EVAL_EPISODE = 50
 
 NUM_ACTIONS = None
+NUM_AGENTS = 3
 METHOD = None
 FIELD = None
 AI_SKIP = None
@@ -63,7 +64,7 @@ def get_player(viz=False, train=False):
 
 class Model(DQNModel):
     def __init__(self):
-        super(Model, self).__init__(IMAGE_SIZE, FRAME_HISTORY, METHOD, NUM_ACTIONS, GAMMA)
+        super(Model, self).__init__(IMAGE_SIZE, FRAME_HISTORY, METHOD, NUM_ACTIONS, NUM_AGENTS, GAMMA)
 
     def _get_DQN_prediction(self, image):
         """ image: [0,255]"""
@@ -193,7 +194,7 @@ if __name__ == '__main__':
             eval_model_multithread(cfg, EVAL_EPISODE, get_player)
     else:
         logger.set_logger_dir(
-            os.path.join('train_log', 'DQNPI-field-{}-skip-{}-ai_skip-{}-hist-{}-batch-{}-lr-0.001-lamb-1.0-{}'.format(
+            os.path.join('train_log', 'MT-DQNPI-field-{}-skip-{}-ai_skip-{}-hist-{}-batch-{}-lr-0.001-lamb-1.0-{}'.format(
                 args.field, args.skip, args.ai_skip, args.hist_len, args.batch_size, os.path.basename('soccer').split('.')[0])))
         config = get_config()
         if args.load:

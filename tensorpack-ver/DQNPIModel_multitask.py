@@ -53,10 +53,10 @@ class Model(ModelDesc):
         next_state = tf.slice(comb_state, [0, 0, 0, 1], [-1, -1, -1, self.channel], name='next_state')
         action_onehot = tf.one_hot(action, self.num_actions, 1.0, 0.0)
 
-        action_o = tf.unstack(action_o, self.num_agents)
-        print (action_o)
-        assert 0
-        action_o_one_hot = tf.one_hot(action_o, self.num_actions, 1.0, 0.0)
+        action_os = tf.unstack(action_o, self.num_agents, axis=1)
+        action_o_one_hots = []
+        for o in action_os:
+            action_o_one_hots.append(tf.one_hot(o, self.num_actions, 1.0, 0.0))
 
         pred_action_value = tf.reduce_sum(self.predict_value * action_onehot, 1)  # N,
         max_pred_reward = tf.reduce_mean(tf.reduce_max(
@@ -82,12 +82,21 @@ class Model(ModelDesc):
         target = reward + (1.0 - tf.cast(isOver, tf.float32)) * self.gamma * tf.stop_gradient(best_v)
         
         q_cost = (symbf.huber_loss(target - pred_action_value))
-        pi_cost = (tf.nn.softmax_cross_entropy_with_logits(labels=action_o_one_hot, logits=pi_value))
+        pi_costs = []
+        for i, o in enumerate(action_o_one_hots):
+            pi_costs.append(tf.nn.softmax_cross_entropy_with_logits(labels=o, logits=pi_value[i]))
+        pi_cost = tf.add_n(pi_costs)
         self.cost = tf.reduce_mean(q_cost + self.lamb * pi_cost)
 
         summary.add_param_summary(('conv.*/W', ['histogram', 'rms']),
                                   ('fc.*/W', ['histogram', 'rms']))   # monitor all W
         summary.add_moving_summary(self.cost)
+        summary.add_moving_summary(tf.reduce_mean(pi_cost, name='pi_cost'))
+        summary.add_moving_summary(tf.reduce_mean(q_cost, name='q_cost'))
+        
+        for i, o_t in enumerate(action_os):
+            pred = tf.argmax(pi_value[i], axis=1)
+            summary.add_moving_summary(tf.contrib.metrics.accuracy(pred, o_t, name='acc-%d' % i))
 
 
     def _get_optimizer(self):
