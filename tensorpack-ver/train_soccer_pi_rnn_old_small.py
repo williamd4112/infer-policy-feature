@@ -47,15 +47,17 @@ METHOD = None
 FIELD = None
 LR = None
 LAMB = None
+AI_SKIP = None
 
 def get_player(viz=False, train=False):
     logger.info('Frame skip = %d, Field = %s' % (ACTION_REPEAT, FIELD))
-    pl = SoccerPlayer(image_shape=IMAGE_SIZE[::-1], viz=viz, frame_skip=ACTION_REPEAT, field=FIELD)
+    pl = SoccerPlayer(image_shape=IMAGE_SIZE[::-1], viz=viz, frame_skip=ACTION_REPEAT, field=FIELD, ai_frame_skip=AI_SKIP)
     if not train:
-        # create a new axis to stack history on pl = MapPlayerState(pl, lambda im: im[:, :, np.newaxis])
+        # create a new axis to stack history on 
+        pl = MapPlayerState(pl, lambda im: im[:, :, np.newaxis])
         # in training, history is taken care of in expreplay buffer
         pl = HistoryFramePlayer(pl, FRAME_HISTORY)
-        pl = PreventStuckPlayer(pl, 5, 1)
+        pl = PreventStuckPlayer(pl, 30, 1)
     #pl = LimitLengthPlayer(pl, 30000)
     return pl
 
@@ -145,10 +147,10 @@ def get_config():
                 every_k_steps=10000 // UPDATE_FREQ),    # update target network every 10k steps
             expreplay,
             ScheduledHyperParamSetter('learning_rate',
-                                      [(200, 4e-4), (300, 2e-4)]),
+                                      [(200, 4e-4), (400, 2e-4)]),
             ScheduledHyperParamSetter(
                 ObjAttrParam(expreplay, 'exploration'),
-                [(0, 1), (100, 0.1), (3200, 0.01)],   # 1->0.1 in the first million steps
+                [(0, 1), (400, 0.1), (800, 0.01)],   # 1->0.1 in the first million steps
                 interp='linear'),
             HumanHyperParamSetter('learning_rate'),
         ],
@@ -168,11 +170,11 @@ if __name__ == '__main__':
     parser.add_argument('--algo', help='algorithm',
                         choices=['DQN', 'Double', 'Dueling'], default='DQN')
     parser.add_argument('--skip', help='act repeat', type=int, required=True)
+    parser.add_argument('--ai_skip', help='ai act repeat', type=int, required=True)
     parser.add_argument('--field', help='field type', type=str, choices=['small', 'large'], required=True)
     parser.add_argument('--hist_len', help='hist len', type=int, required=True)
     parser.add_argument('--batch_size', help='batch size', type=int, required=True)
     parser.add_argument('--lr', help='lr', type=float, required=True)
-    parser.add_argument('--lamb', help='lamb', type=float, required=True)
     args = parser.parse_args()
 
     if args.gpu:
@@ -184,7 +186,8 @@ if __name__ == '__main__':
     FRAME_HISTORY = args.hist_len
     BATCH_SIZE = args.batch_size
     LR = args.lr
-    LAMB = args.lamb
+    LAMB = 1.0
+    AI_SKIP = args.ai_skip
 
     # set num_actions
     NUM_ACTIONS = SoccerPlayer().get_action_space().num_actions()
@@ -202,8 +205,8 @@ if __name__ == '__main__':
             eval_model_multithread(cfg, EVAL_EPISODE, get_player)
     else:
         logger.set_logger_dir(
-            os.path.join('train_log', 'DRQNPI-old-small-field-{}-skip-{}-hist-{}-batch-{}-lr-{}-lamb-{}-{}'.format(
-                args.field, args.skip, args.hist_len, args.batch_size, args.lr, args.lamb, os.path.basename('soccer').split('.')[0])))
+            os.path.join('train_log', 'DRQNPI-old-small-field-{}-skip-{}-ai_skip-{}-hist-{}-batch-{}-lr-{}-{}'.format(
+                args.field, args.skip, args.ai_skip, args.hist_len, args.batch_size, args.lr, os.path.basename('soccer').split('.')[0])))
         config = get_config()
         if args.load:
             config.session_init = SaverRestore(args.load)
