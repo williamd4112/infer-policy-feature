@@ -39,7 +39,7 @@ class SoccerPlayer(RLEnvironment):
                 field=None, partial=False, radius=2,
                 frame_skip=4, 
                 image_shape=(84, 84), 
-                nullop_start=30, mode=None, team_size=1):
+                nullop_start=30, mode=None, team_size=1, ai_frame_skip=1):
         super(SoccerPlayer, self).__init__()
         self.mode = mode
         self.field = field
@@ -56,7 +56,7 @@ class SoccerPlayer(RLEnvironment):
         else :
             map_path = None
 
-        self.env_options = soccer_environment.SoccerEnvironmentOptions(team_size=1, map_path=map_path)
+        self.env_options = soccer_environment.SoccerEnvironmentOptions(team_size=1, map_path=map_path, ai_frame_skip=ai_frame_skip)
         self.env = soccer_environment.SoccerEnvironment(env_options=self.env_options, renderer_options=self.renderer_options)
 
         self.computer_team_name = self.env.team_names[1]
