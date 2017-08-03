@@ -83,6 +83,13 @@ class Model(ModelDesc):
         summary.add_param_summary(('conv.*/W', ['histogram', 'rms']),
                                   ('fc.*/W', ['histogram', 'rms']))   # monitor all W
         summary.add_moving_summary(self.cost)
+        summary.add_moving_summary(tf.reduce_mean(pi_cost, name='pi_cost'))
+        summary.add_moving_summary(tf.reduce_mean(q_cost, name='q_cost'))
+
+        pred = tf.argmax(pi_value, axis=1)
+        summary.add_moving_summary(tf.contrib.metrics.accuracy(pred, action_o))
+
+
 
 
     def _get_optimizer(self):
