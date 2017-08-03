@@ -22,6 +22,7 @@ __all__ = ['AugmentExpReplay']
 AugmentExperience = namedtuple('AugmentExperience',
                         ['state', 'action', 'reward', 'isOver', 'action_o', 'old_action_o'])
 
+NOOP_ACT = 4
 
 class AugmentReplayMemory(ReplayMemory):
     def __init__(self, max_size, state_shape, history_len):
@@ -52,15 +53,27 @@ class AugmentReplayMemory(ReplayMemory):
         ret = self._pad_sample(state, reward, action, isOver, action_o, old_action_o)
         return ret
 
+    def recent_state(self):
+        ls = list(self._hist)
+        states =[np.zeros(self.state_shape, dtype='uint8')] * (self._hist.maxlen - len(ls))
+        states.extend([k.state for k in ls])
+        actions = [NOOP_ACT] * (self._hist.maxlen - len(ls))
+        actions.extend([k.action_o for k in lst])
+
+        return states, actions
+
     # the next_state is a different episode if current_state.isOver==True
     def _pad_sample(self, state, reward, action, isOver, action_o, old_action_o):
         for k in range(self.history_len - 2, -1, -1):
             if isOver[k]:
                 state = copy.deepcopy(state)
+                action_o = copy.deepycopy(action_o)
+
                 state[:k + 1].fill(0)
+                action_o[k + 1] = NOOP_ACT
                 break
         state = state.transpose(1, 2, 0)
-        return (state, reward[-2], action[-2], isOver[-2], action_o[-2], old_action_o[-2])
+        return (state, reward[-2], action[-2], isOver[-2], action_o, old_action_o[-2])
 
     def _assign(self, pos, exp):
         self.state[pos] = exp.state
