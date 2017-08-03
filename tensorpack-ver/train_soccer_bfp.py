@@ -53,7 +53,7 @@ FIELD = None
 USE_RNN = False
 
 def get_player(viz=False, train=False):
-    pl = SoccerPlayer(image_shape=IMAGE_SIZE[::-1], viz=viz, frame_skip=ACTION_REPEAT, field=FIELD)
+    pl = SoccerPlayer(image_shape=IMAGE_SIZE[::-1], viz=viz, frame_skip=ACTION_REPEAT, field=FIELD, ai_frame_skip=2)
     if not train:
         # create a new axis to stack history on
         pl = MapPlayerState(pl, lambda im: im[:, :, np.newaxis])
@@ -110,18 +110,12 @@ class Model(DQNModel):
                      )
 
             pi_y = FullyConnected('fcpi0', pi_h, 128)
-            pi_y = tf.contrib.layers.batch_norm(pi_y)
-            pi_y = tf.nn.relu(pi_y)
             pi_y = FullyConnected('fcpi1', pi_y, self.num_actions, nl=tf.identity)
 
             bp_y = FullyConnected('fcbp0', pi_h, 128)
-            bp_y = tf.contrib.layers.batch_norm(bp_y)
-            bp_y = tf.nn.relu(bp_y)
             bp_y = FullyConnected('fcbp1', bp_y, self.num_actions, nl=tf.identity)
 
             fp_y = FullyConnected('fcfp0', pi_h, 128)
-            fp_y = tf.contrib.layers.batch_norm(fp_y)
-            fp_y = tf.nn.relu(fp_y)
             fp_y = FullyConnected('fcfp1', fp_y, self.num_actions, nl=tf.identity)
 
         if USE_RNN:

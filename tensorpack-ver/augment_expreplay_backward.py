@@ -58,7 +58,7 @@ class AugmentReplayMemory(ReplayMemory):
         states =[np.zeros(self.state_shape, dtype='uint8')] * (self._hist.maxlen - len(ls))
         states.extend([k.state for k in ls])
         actions = [NOOP_ACT] * (self._hist.maxlen - len(ls))
-        actions.extend([k.action_o for k in lst])
+        actions.extend([k.action_o for k in ls])
 
         return states, actions
 
