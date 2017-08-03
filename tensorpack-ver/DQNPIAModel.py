@@ -63,7 +63,7 @@ class Model(ModelDesc):
         
         # unroll the action from [?, 17] to [?]
         action_o_target = tf.slice(comb_action_o, [0, self.channel], [-1, 1], name='action_o_target')
-        action_o_one_hot = tf.one_hot(action_o_target, self.num_actions, 1.0, 0.0)
+        action_o_target_one_hot = tf.one_hot(action_o_target, self.num_actions, 1.0, 0.0)
 
         pred_action_value = tf.reduce_sum(self.predict_value * action_onehot, 1)  # N,
 
@@ -90,7 +90,7 @@ class Model(ModelDesc):
         target = reward + (1.0 - tf.cast(isOver, tf.float32)) * self.gamma * tf.stop_gradient(best_v)
         
         q_cost = (symbf.huber_loss(target - pred_action_value))
-        pi_cost = (tf.nn.softmax_cross_entropy_with_logits(labels=action_o_one_hot, logits=pi_value))
+        pi_cost = (tf.nn.softmax_cross_entropy_with_logits(labels=action_o_target_one_hot, logits=pi_value))
         self.cost = tf.reduce_mean(q_cost + pi_cost, name='cost')
 
         summary.add_param_summary(('conv.*/W', ['histogram', 'rms']),
