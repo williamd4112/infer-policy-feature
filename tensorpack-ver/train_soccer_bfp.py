@@ -109,17 +109,18 @@ class Model(DQNModel):
                                 dtype=tf.float32, scope='rnn'
                      )
 
-            pi_y = FullyConnected('fcpi0', pi_h, 128)
-            pi_y = FullyConnected('fcpi1', pi_y, self.num_actions, nl=tf.identity)
+            pi_y = FullyConnected('fcpi0', pi_h, 128, nl=tf.nn.relu)
+            pi_y = FullyConnected('fcpi2', pi_y, self.num_actions, nl=tf.identity)
 
-            bp_y = FullyConnected('fcbp0', pi_h, 128)
-            bp_y = FullyConnected('fcbp1', bp_y, self.num_actions, nl=tf.identity)
+            bp_y = FullyConnected('fcbp0', pi_h, 128, nl=tf.nn.relu)
+            bp_y = FullyConnected('fcbp2', bp_y, self.num_actions, nl=tf.identity)
 
-            fp_y = FullyConnected('fcfp0', pi_h, 128)
-            fp_y = FullyConnected('fcfp1', fp_y, self.num_actions, nl=tf.identity)
+            fp_y = FullyConnected('fcfp0', pi_h, 128, nl=tf.nn.relu)
+            fp_y = FullyConnected('fcfp2', fp_y, self.num_actions, nl=tf.identity)
 
         if USE_RNN:
-            l = tf.add(q_l, pi_h)
+            #l = tf.add(q_l, pi_h)
+            l = tf.multiply(q_l, pi_h)
         else:
             l = tf.multiply(q_l, pi_h)
 

@@ -42,13 +42,15 @@ class Model(ModelDesc):
 
     def _build_graph(self, inputs):
 
-        comb_state, action, reward, isOver, comb_action_o, old_action_o = inputs
+        comb_state, action, reward, isOver, comb_action_o, wtfman = inputs
         comb_state = tf.cast(comb_state, tf.float32)
         self.batch_size = tf.shape(comb_state)[0]
         reshape_size = (self.batch_size * self.channel,)
 
         state = tf.slice(comb_state, [0, 0, 0, 0], [-1, -1, -1, self.channel], name='state')
-        act_o = tf.slice(comb_action_o, [0, self.channel-1], [-1, 1], name='action_o'),
+        old_action_o = comb_action_o[:, self.channel-2]
+        act_o = comb_action_o[:, self.channel-1]
+        next_act_o = comb_action_o[:, self.channel]
 
         self.predict_value, pi_value, bp_value, fp_value = self._get_DQN_prediction(state)
         if not get_current_tower_context().is_training:
@@ -57,7 +59,6 @@ class Model(ModelDesc):
         reward = tf.clip_by_value(reward, -1, 1)
 
         next_state = tf.slice(comb_state, [0, 0, 0, 1], [-1, -1, -1, self.channel], name='next_state')
-        next_act_o = tf.slice(comb_action_o, [0, self.channel], [-1, 1], name='next_action_o'),
 
         action_onehot = tf.one_hot(action, self.num_actions, 1.0, 0.0)
         action_o_one_hot = tf.one_hot(act_o, self.num_actions, 1.0, 0.0)
@@ -88,10 +89,10 @@ class Model(ModelDesc):
         target = reward + (1.0 - tf.cast(isOver, tf.float32)) * self.gamma * tf.stop_gradient(best_v)
 
         q_cost = (symbf.huber_loss(target - pred_action_value))
-        pi_cost = (tf.nn.softmax_cross_entropy_with_logits(labels=action_o_one_hot, logits=pi_value))
-        fp_cost = (tf.nn.softmax_cross_entropy_with_logits(labels=next_action_o_one_hot, logits=fp_value))
-        bp_cost = (tf.nn.softmax_cross_entropy_with_logits(labels=old_action_o_one_hot, logits=bp_value))
-        self.cost = tf.reduce_mean(q_cost + self.lamb * (pi_cost + bp_cost + fp_cost), name='total_cost')
+        pi_cost = (self.lamb + 0.2) * (tf.nn.softmax_cross_entropy_with_logits(labels=action_o_one_hot, logits=pi_value))
+        fp_cost = (self.lamb + 0.4) * (tf.nn.softmax_cross_entropy_with_logits(labels=next_action_o_one_hot, logits=fp_value))
+        bp_cost = self.lamb * (tf.nn.softmax_cross_entropy_with_logits(labels=old_action_o_one_hot, logits=bp_value))
+        self.cost = tf.reduce_mean(q_cost + bp_cost + pi_cost + fp_cost, name='total_cost')
 
         pred_c = tf.argmax(pi_value, axis=1)
         pred_fp = tf.argmax(fp_value, axis=1)
@@ -105,9 +106,8 @@ class Model(ModelDesc):
         summary.add_moving_summary(tf.reduce_mean(q_cost, name='q_cost'))
         summary.add_moving_summary(tf.reduce_mean(fp_cost, name='fp_cost'))
         summary.add_moving_summary(tf.contrib.metrics.accuracy(pred_bp, old_action_o, name='pred_bp_acc'))
-        summary.add_moving_summary(tf.contrib.metrics.accuracy(pred_c, act_o[0], name='pred_c_acc'))
-        summary.add_moving_summary(tf.contrib.metrics.accuracy(pred_fp, next_act_o[0], name='pred_fp_acc'))
-
+        summary.add_moving_summary(tf.contrib.metrics.accuracy(pred_c, act_o, name='pred_c_acc'))
+        summary.add_moving_summary(tf.contrib.metrics.accuracy(pred_fp, next_act_o, name='pred_fp_acc'))
 
     def _get_optimizer(self):
         lr = symbf.get_scalar_var('learning_rate', self.lr, summary=True)

@@ -134,14 +134,14 @@ class AugmentExpReplay(ExpReplay, Callback):
             act = self.rng.choice(range(self.num_actions))
         else:
             # build a history state
-            history_s, history_a = self.mem.recent_state()
+            history_s, history_a_o = self.mem.recent_state()
             history_s.append(old_s)
             history_a_o.append(old_action_o)
 
             # assume batched network
             history_s = np.stack(history_s, axis=2)
             history_a_o = np.asarray(history_a_o)
-            q_values = self.predictor([[history]])[0][0]  # this is the bottleneck
+            q_values = self.predictor([[history_s]])[0][0]  # this is the bottleneck
             act = np.argmax(q_values)
         reward, isOver = self.player.action(act)
         # NOTE: since modify action interface will destroy the proxy design
