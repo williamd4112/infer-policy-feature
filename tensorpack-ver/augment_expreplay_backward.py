@@ -67,7 +67,7 @@ class AugmentReplayMemory(ReplayMemory):
         for k in range(self.history_len - 2, -1, -1):
             if isOver[k]:
                 state = copy.deepcopy(state)
-                action_o = copy.deepycopy(action_o)
+                action_o = copy.deepcopy(action_o)
 
                 state[:k + 1].fill(0)
                 action_o[k + 1] = NOOP_ACT
@@ -134,11 +134,13 @@ class AugmentExpReplay(ExpReplay, Callback):
             act = self.rng.choice(range(self.num_actions))
         else:
             # build a history state
-            history = self.mem.recent_state()
-            history.append(old_s)
-            history = np.stack(history, axis=2)
+            history_s, history_a = self.mem.recent_state()
+            history_s.append(old_s)
+            history_a_o.append(old_action_o)
 
             # assume batched network
+            history_s = np.stack(history_s, axis=2)
+            history_a_o = np.asarray(history_a_o)
             q_values = self.predictor([[history]])[0][0]  # this is the bottleneck
             act = np.argmax(q_values)
         reward, isOver = self.player.action(act)

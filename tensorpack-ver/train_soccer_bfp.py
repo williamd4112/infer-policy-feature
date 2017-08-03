@@ -21,7 +21,7 @@ from tensorpack.utils.concurrency import *
 from tensorpack.RL import *
 import tensorflow as tf
 
-from DQNBPIModel import Model as DQNModel
+from DQNBFPIModel import Model as DQNModel
 import common
 from common import play_model, Evaluator, eval_model_multithread
 from soccer_env import SoccerPlayer
@@ -221,7 +221,7 @@ if __name__ == '__main__':
             eval_model_multithread(cfg, EVAL_EPISODE, get_player)
     else:
         logger.set_logger_dir(
-            os.path.join('train_log', 'DQNPI-field-{}-skip-{}-hist-{}-batch-{}-{}'.format(
+            os.path.join('train_log', 'DQNBFPI-field-{}-skip-{}-hist-{}-batch-{}-{}'.format(
                 args.field, args.skip, args.hist_len, args.batch_size, os.path.basename('soccer').split('.')[0])))
         config = get_config()
         if args.load:

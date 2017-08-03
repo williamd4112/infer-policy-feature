@@ -33,7 +33,7 @@ class Model(ModelDesc):
                 InputDesc(tf.int64, (None,), 'action'),
                 InputDesc(tf.float32, (None,), 'reward'),
                 InputDesc(tf.bool, (None,), 'isOver'),
-                InputDesc(tf.int64, (None,), 'comb_action_o'),
+                InputDesc(tf.int64, (None, self.channel + 1), 'comb_action_o'),
                 InputDesc(tf.int64, (None,), 'old_action_o')]
 
     @abc.abstractmethod
@@ -48,7 +48,7 @@ class Model(ModelDesc):
         reshape_size = (self.batch_size * self.channel,)
 
         state = tf.slice(comb_state, [0, 0, 0, 0], [-1, -1, -1, self.channel], name='state')
-        act_o = tf.slice(comb_action_o, [0, 0], [-1, self.channel], name='action_o'),
+        act_o = tf.slice(comb_action_o, [0, self.channel-1], [-1, 1], name='action_o'),
 
         self.predict_value, pi_value, bp_value, fp_value = self._get_DQN_prediction(state)
         if not get_current_tower_context().is_training:
@@ -57,11 +57,11 @@ class Model(ModelDesc):
         reward = tf.clip_by_value(reward, -1, 1)
 
         next_state = tf.slice(comb_state, [0, 0, 0, 1], [-1, -1, -1, self.channel], name='next_state')
-        next_act_o = tf.slice(comb_action_o, [0, 1], [-1, self.channel], name='next_action_o'),
+        next_act_o = tf.slice(comb_action_o, [0, self.channel], [-1, 1], name='next_action_o'),
 
         action_onehot = tf.one_hot(action, self.num_actions, 1.0, 0.0)
-        action_o_one_hot = tf.one_hot(tf.reshape(act_o, reshape_size), self.num_actions, 1.0, 0.0)
-        next_action_o_one_hot = tf.one_hot(tf.reshape(next_act_o, reshape_size), self.num_actions, 1.0, 0.0)
+        action_o_one_hot = tf.one_hot(act_o, self.num_actions, 1.0, 0.0)
+        next_action_o_one_hot = tf.one_hot(next_act_o, self.num_actions, 1.0, 0.0)
         old_action_o_one_hot = tf.one_hot(old_action_o, self.num_actions, 1.0, 0.0)
 
         pred_action_value = tf.reduce_sum(self.predict_value * action_onehot, 1)  # N,
@@ -89,9 +89,9 @@ class Model(ModelDesc):
 
         q_cost = (symbf.huber_loss(target - pred_action_value))
         pi_cost = (tf.nn.softmax_cross_entropy_with_logits(labels=action_o_one_hot, logits=pi_value))
-        fp_cost = (tf.nn.softmax_cross_entropy_with_logits(labels=next_action_o_one_hot, logits=bp_value))
+        fp_cost = (tf.nn.softmax_cross_entropy_with_logits(labels=next_action_o_one_hot, logits=fp_value))
         bp_cost = (tf.nn.softmax_cross_entropy_with_logits(labels=old_action_o_one_hot, logits=bp_value))
-        self.cost = tf.reduce_mean(q_cost + self.lamb * (pi_cost + bp_cost + fp_cost))
+        self.cost = tf.reduce_mean(q_cost + self.lamb * (pi_cost + bp_cost + fp_cost), name='total_cost')
 
         pred_c = tf.argmax(pi_value, axis=1)
         pred_fp = tf.argmax(fp_value, axis=1)
@@ -99,14 +99,14 @@ class Model(ModelDesc):
 
         summary.add_param_summary(('conv.*/W', ['histogram', 'rms']),
                                   ('fc.*/W', ['histogram', 'rms']))   # monitor all W
-        summary.add_moving_summary(self.cost, name='total_cost')
+        summary.add_moving_summary(self.cost)
         summary.add_moving_summary(tf.reduce_mean(pi_cost, name='pi_cost'))
-        summary.add_moving_summary(tf.reduce_mean(fp_cost, name='fp_cost'))
         summary.add_moving_summary(tf.reduce_mean(bp_cost, name='bp_cost'))
         summary.add_moving_summary(tf.reduce_mean(q_cost, name='q_cost'))
-        summary.add_moving_summary(tf.contrib.metrics.accuracy(pred_c, act_o), name='pred_c_acc')
-        summary.add_moving_summary(tf.contrib.metrics.accuracy(pred_fp, next_act_o), name='pred_fp_acc')
-        summary.add_moving_summary(tf.contrib.metrics.accuracy(pred_bp, old_action_o), name='pred_bp_acc')
+        summary.add_moving_summary(tf.reduce_mean(fp_cost, name='fp_cost'))
+        summary.add_moving_summary(tf.contrib.metrics.accuracy(pred_bp, old_action_o, name='pred_bp_acc'))
+        summary.add_moving_summary(tf.contrib.metrics.accuracy(pred_c, act_o[0], name='pred_c_acc'))
+        summary.add_moving_summary(tf.contrib.metrics.accuracy(pred_fp, next_act_o[0], name='pred_fp_acc'))
 
 
     def _get_optimizer(self):
