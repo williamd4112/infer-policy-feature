@@ -214,8 +214,8 @@ if __name__ == '__main__':
             eval_model_multithread(cfg, EVAL_EPISODE, get_player)
     else:
         logger.set_logger_dir(
-            os.path.join('train_log', 'DQNBFPI-field-{}-skip-{}-hist-{}-batch-{}-{}'.format(
-                args.field, args.skip, args.hist_len, args.batch_size, os.path.basename('soccer').split('.')[0])))
+            os.path.join('train_log', 'DQNBFPI-field-{}-skip-{}-hist-{}-batch-{}-{}-{}'.format(
+                args.field, args.skip, args.hist_len, args.batch_size, os.path.basename('soccer').split('.')[0], LAMB)))
         config = get_config()
         if args.load:
             config.session_init = SaverRestore(args.load)
