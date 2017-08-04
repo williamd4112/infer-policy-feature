@@ -33,7 +33,7 @@ class Model(ModelDesc):
                 InputDesc(tf.int64, (None,), 'action'),
                 InputDesc(tf.float32, (None,), 'reward'),
                 InputDesc(tf.bool, (None,), 'isOver'),
-                InputDesc(tf.int64, (None,), 'action_o'),
+                InputDesc(tf.int64, (None, self.channel + 1), 'action_o'),
                 InputDesc(tf.int64, (None,), 'old_action_o')]
 
     @abc.abstractmethod
@@ -49,6 +49,7 @@ class Model(ModelDesc):
         if not get_current_tower_context().is_training:
             return
 
+        action_o = action_o[:, self.channel-1]
         reward = tf.clip_by_value(reward, -1, 1)
         next_state = tf.slice(comb_state, [0, 0, 0, 1], [-1, -1, -1, self.channel], name='next_state')
         action_onehot = tf.one_hot(action, self.num_actions, 1.0, 0.0)

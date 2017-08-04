@@ -89,8 +89,8 @@ class Model(ModelDesc):
         target = reward + (1.0 - tf.cast(isOver, tf.float32)) * self.gamma * tf.stop_gradient(best_v)
 
         q_cost = (symbf.huber_loss(target - pred_action_value))
-        pi_cost = (self.lamb + 0.2) * (tf.nn.softmax_cross_entropy_with_logits(labels=action_o_one_hot, logits=pi_value))
-        fp_cost = (self.lamb + 0.4) * (tf.nn.softmax_cross_entropy_with_logits(labels=next_action_o_one_hot, logits=fp_value))
+        pi_cost = self.lamb * (tf.nn.softmax_cross_entropy_with_logits(labels=action_o_one_hot, logits=pi_value))
+        fp_cost = self.lamb * (tf.nn.softmax_cross_entropy_with_logits(labels=next_action_o_one_hot, logits=fp_value))
         bp_cost = self.lamb * (tf.nn.softmax_cross_entropy_with_logits(labels=old_action_o_one_hot, logits=bp_value))
         self.cost = tf.reduce_mean(q_cost + bp_cost + pi_cost + fp_cost, name='total_cost')
 

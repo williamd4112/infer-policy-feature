@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-# File: train_soccer.py
-# Author: zhangwei hong <williamd4112@hotmail.com>
 
 import numpy as np
 
