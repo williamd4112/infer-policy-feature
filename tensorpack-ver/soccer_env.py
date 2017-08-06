@@ -124,9 +124,9 @@ class SoccerPlayer(RLEnvironment):
     def restart_episode(self):
         self.current_episode_score.reset()
         self.env.reset()
-        if self.mode is not None:
+        if self.mode in ['OFFENSIVE', 'DEFENSIVE']:
             self.env.state.set_agent_mode(self.computer_agent_index, self.mode)
-
+ 
         self.last_raw_screen = self._grab_raw_image()
 
     def action(self, act):
@@ -148,6 +148,9 @@ class SoccerPlayer(RLEnvironment):
             if self.env.state.is_terminal():
                 break
         self.last_info = info
+        if self.mode == 'RANDOM':
+            modes = ['OFFENSIVE', 'DEFENSIVE']
+            self.env.state.set_agent_mode(self.computer_agent_index, random.choice(modes))
 
         self.current_episode_score.feed(r)
         isOver = self.env.state.is_terminal()
