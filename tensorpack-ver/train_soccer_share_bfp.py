@@ -44,6 +44,8 @@ EVAL_EPISODE = 50
 LAMB = 1.0
 FP_DECAY = 0.1
 LR = 1e-3
+EXP_RATE = None
+LR_RATE = None
 
 
 NUM_ACTIONS = None
@@ -152,12 +154,14 @@ def get_config():
                 every_k_steps=10000 // UPDATE_FREQ),    # update target network every 10k steps
             expreplay,
             ScheduledHyperParamSetter('learning_rate',
+                                       LR_RATE,
                                       #[(20, 4e-4), (40, 2e-4)]),
-                                      [(40, 4e-4), (80, 2e-4)]),
+                                      #[(40, 4e-4), (80, 2e-4)]),
             ScheduledHyperParamSetter(
                 ObjAttrParam(expreplay, 'exploration'),
+                EXP_RATE,
                 #[(0, 1), (10, 0.1), (320, 0.01)],   # 1->0.1 in the first million steps
-                [(0, 1), (10, 0.1), (100, 0.01)],   # 1->0.1 in the first million steps
+                #[(0, 1), (40, 0.1), (80, 0.01)],   # 1->0.1 in the first million steps
                 interp='linear'),
             HumanHyperParamSetter('learning_rate'),
         ],
@@ -184,6 +188,7 @@ if __name__ == '__main__':
     parser.add_argument('--lamb', dest='lamb', type=float, default=1.0)
     parser.add_argument('--fp_decay', dest='fp_decay', type=float, default=0.1)
     parser.add_argument('--rnn', dest='rnn', action='store_true')
+    parser.add_argument('--fast', dest='fast', action='store_true')
 
     args = parser.parse_args()
 
@@ -198,6 +203,13 @@ if __name__ == '__main__':
     LAMB = args.lamb
     USE_RNN = args.rnn
     FP_DECAY = args.fp_decay
+
+    if args.fast:
+        LR_RATE = [(20, 4e-4), (40, 2e-4)]
+        EXP_RATE = [(0, 1), (10, 0.1), (320, 0.01)]
+    else:
+        LR_RATE = [(40, 4e-4), (80, 2e-4)]
+        EXP_RATE = [(0, 1), (40, 0.1), (80, 0.01)]
 
     # set num_actions
     NUM_ACTIONS = SoccerPlayer().get_action_space().num_actions()
@@ -215,8 +227,9 @@ if __name__ == '__main__':
             eval_model_multithread(cfg, EVAL_EPISODE, get_player)
     else:
         logger.set_logger_dir(
-            os.path.join('train_log', 'DQNBFPI-SHARE-field-{}-skip-{}-hist-{}-batch-{}-{}-{}_fast_decay'.format(
-                args.field, args.skip, args.hist_len, args.batch_size, os.path.basename('soccer').split('.')[0], LAMB)))
+            os.path.join('train_log', 'DQNBFPI-SHARE-field-{}-skip-{}-hist-{}-batch-{}-{}-{}-{}-decay-{}'.format(
+                args.field, args.skip, args.hist_len, args.batch_size, os.path.basename('soccer').split('.')[0], LAMB,
+                'fast' if args.task else 'slow', args.fp_decay)))
         config = get_config()
         if args.load:
             config.session_init = SaverRestore(args.load)
