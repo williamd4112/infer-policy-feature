@@ -46,6 +46,7 @@ FP_DECAY = 0.1
 LR = 1e-3
 EXP_RATE = None
 LR_RATE = None
+AI_SKIP = 2
 
 
 NUM_ACTIONS = None
@@ -54,7 +55,7 @@ FIELD = None
 USE_RNN = False
 
 def get_player(viz=False, train=False):
-    pl = SoccerPlayer(image_shape=IMAGE_SIZE[::-1], viz=viz, frame_skip=ACTION_REPEAT, field=FIELD, ai_frame_skip=2)
+    pl = SoccerPlayer(image_shape=IMAGE_SIZE[::-1], viz=viz, frame_skip=ACTION_REPEAT, field=FIELD, ai_frame_skip=AI_SKIP)
     if not train:
         # create a new axis to stack history on
         pl = MapPlayerState(pl, lambda im: im[:, :, np.newaxis])
@@ -187,6 +188,7 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', help='batch size', type=int, required=True)
     parser.add_argument('--lamb', dest='lamb', type=float, default=1.0)
     parser.add_argument('--fp_decay', dest='fp_decay', type=float, default=0.1)
+    parser.add_argument('--ai_skip', dest='ai_skip', type=float, default=2)
     parser.add_argument('--rnn', dest='rnn', action='store_true')
     parser.add_argument('--fast', dest='fast', action='store_true')
 
@@ -203,6 +205,7 @@ if __name__ == '__main__':
     LAMB = args.lamb
     USE_RNN = args.rnn
     FP_DECAY = args.fp_decay
+    AI_SKIP = args.ai_skip
 
     if args.fast:
         LR_RATE = [(20, 4e-4), (40, 2e-4)]
@@ -227,7 +230,7 @@ if __name__ == '__main__':
             eval_model_multithread(cfg, EVAL_EPISODE, get_player)
     else:
         logger.set_logger_dir(
-            os.path.join('train_log', 'DQNBFPI-SHARE-field-{}-skip-{}-hist-{}-batch-{}-{}-{}-{}-decay-{}'.format(
+            os.path.join('train_log', 'DQNBFPI-SHARE-field-{}-skip-{}-hist-{}-batch-{}-{}-{}-{}-decay-{}-aiskip-{}'.format(
                 args.field, args.skip, args.hist_len, args.batch_size, os.path.basename('soccer').split('.')[0], LAMB,
                 'fast' if args.task else 'slow', args.fp_decay)))
         config = get_config()
