@@ -74,17 +74,25 @@ class Model(DQNModel):
         with tf.variable_scope('q'):
             with argscope(Conv2D, nl=PReLU.symbolic_function, use_bias=True), \
                     argscope(LeakyReLU, alpha=0.01):
-                h = (LinearWrap(image)
+                q_l = (LinearWrap(image)
                      # Nature architecture
                      .Conv2D('conv0', out_channel=32, kernel_shape=8, stride=4)
                      .Conv2D('conv1', out_channel=64, kernel_shape=4, stride=2)
-                     .Conv2D('conv2', out_channel=64, kernel_shape=3)())                    
-                     #.FullyConnected('fc0', 512, nl=LeakyReLU)())
-                q_l = FullyConnected('fc0', h, 512, nl=LeakyReLU)
-                pi_l = FullyConnected('fcp', h, 512, nl=LeakyReLU)
-        pi_y = FullyConnected('fcpt', pi_l, self.num_actions, nl=tf.identity)
-        
-        l = tf.multiply(q_l, pi_l)
+                     .Conv2D('conv2', out_channel=64, kernel_shape=3)                    
+                     .FullyConnected('fc0', 512, nl=LeakyReLU)())
+
+        with tf.variable_scope('pi'):
+            with argscope(Conv2D, nl=PReLU.symbolic_function, use_bias=True), \
+                    argscope(LeakyReLU, alpha=0.01):
+                pi_l = (LinearWrap(image)
+                     # Nature architecture
+                     .Conv2D('conv0', out_channel=32, kernel_shape=8, stride=4)
+                     .Conv2D('conv1', out_channel=64, kernel_shape=4, stride=2)
+                     .Conv2D('conv2', out_channel=64, kernel_shape=3)                    
+                     .FullyConnected('fc0', 512, nl=LeakyReLU)())
+            pi_y = FullyConnected('fc1', pi_l, self.num_actions, nl=tf.identity)
+
+        l = (q_l + pi_l)
         
         if self.method != 'Dueling':
             Q = FullyConnected('fct', l, self.num_actions, nl=tf.identity)
@@ -179,7 +187,7 @@ if __name__ == '__main__':
             eval_model_multithread(cfg, EVAL_EPISODE, get_player)
     else:
         logger.set_logger_dir(
-            os.path.join('train_log', 'DQNPI-aux-field-{}-skip-{}-ai_skip-{}-hist-{}-batch-{}-lr-{}-lamb-{}-{}'.format(
+            os.path.join('train_log', 'DQNPI-small-plus-field-{}-skip-{}-ai_skip-{}-hist-{}-batch-{}-lr-{}-lamb-{}-{}'.format(
                 args.field, args.skip, args.ai_skip, args.hist_len, args.batch_size, args.lr, args.lamb, os.path.basename('soccer').split('.')[0])))
         config = get_config()
         if args.load:

@@ -21,7 +21,7 @@ from tensorpack.utils.concurrency import *
 from tensorpack.RL import *
 import tensorflow as tf
 
-from DQNPIModel import Model as DQNModel
+from DQNPIModel_abl import Model as DQNModel
 import common
 from common import play_model, Evaluator, eval_model_multithread
 from soccer_env import SoccerPlayer
@@ -65,7 +65,7 @@ def get_player(viz=False, train=False):
 
 class Model(DQNModel):
     def __init__(self):
-        super(Model, self).__init__(IMAGE_SIZE, FRAME_HISTORY, METHOD, NUM_ACTIONS, GAMMA, LR, LAMB)
+        super(Model, self).__init__(IMAGE_SIZE, FRAME_HISTORY, METHOD, NUM_ACTIONS, GAMMA, LR, 0.0)
 
     def _get_DQN_prediction(self, image):
         """ image: [0,255]"""
@@ -74,16 +74,24 @@ class Model(DQNModel):
         with tf.variable_scope('q'):
             with argscope(Conv2D, nl=PReLU.symbolic_function, use_bias=True), \
                     argscope(LeakyReLU, alpha=0.01):
-                h = (LinearWrap(image)
+                q_l = (LinearWrap(image)
                      # Nature architecture
                      .Conv2D('conv0', out_channel=32, kernel_shape=8, stride=4)
                      .Conv2D('conv1', out_channel=64, kernel_shape=4, stride=2)
-                     .Conv2D('conv2', out_channel=64, kernel_shape=3)())                    
-                     #.FullyConnected('fc0', 512, nl=LeakyReLU)())
-                q_l = FullyConnected('fc0', h, 512, nl=LeakyReLU)
-                pi_l = FullyConnected('fcp', h, 512, nl=LeakyReLU)
-        pi_y = FullyConnected('fcpt', pi_l, self.num_actions, nl=tf.identity)
-        
+                     .Conv2D('conv2', out_channel=64, kernel_shape=3)                    
+                     .FullyConnected('fc0', 512, nl=LeakyReLU)())
+
+        with tf.variable_scope('pi'):
+            with argscope(Conv2D, nl=PReLU.symbolic_function, use_bias=True), \
+                    argscope(LeakyReLU, alpha=0.01):
+                pi_l = (LinearWrap(image)
+                     # Nature architecture
+                     .Conv2D('conv0', out_channel=32, kernel_shape=8, stride=4)
+                     .Conv2D('conv1', out_channel=64, kernel_shape=4, stride=2)
+                     .Conv2D('conv2', out_channel=64, kernel_shape=3)                    
+                     .FullyConnected('fc0', 512, nl=LeakyReLU)())
+            pi_y = FullyConnected('fc1', pi_l, self.num_actions, nl=tf.identity)
+
         l = tf.multiply(q_l, pi_l)
         
         if self.method != 'Dueling':
@@ -148,7 +156,6 @@ if __name__ == '__main__':
     parser.add_argument('--hist_len', help='hist len', type=int, required=True)
     parser.add_argument('--batch_size', help='batch size', type=int, required=True)
     parser.add_argument('--lr', help='lr', type=float, required=True)
-    parser.add_argument('--lamb', help='lamb', type=float, required=True)
     args = parser.parse_args()
 
     if args.gpu:
@@ -161,7 +168,7 @@ if __name__ == '__main__':
     BATCH_SIZE = args.batch_size
     LR = args.lr
     AI_SKIP = args.ai_skip
-    LAMB = args.lamb
+    LAMB = 0.0
 
     # set num_actions
     NUM_ACTIONS = SoccerPlayer().get_action_space().num_actions()
@@ -179,8 +186,8 @@ if __name__ == '__main__':
             eval_model_multithread(cfg, EVAL_EPISODE, get_player)
     else:
         logger.set_logger_dir(
-            os.path.join('train_log', 'DQNPI-aux-field-{}-skip-{}-ai_skip-{}-hist-{}-batch-{}-lr-{}-lamb-{}-{}'.format(
-                args.field, args.skip, args.ai_skip, args.hist_len, args.batch_size, args.lr, args.lamb, os.path.basename('soccer').split('.')[0])))
+            os.path.join('train_log', 'DQNPI-abl-small-field-{}-skip-{}-ai_skip-{}-hist-{}-batch-{}-lr-{}-lamb-{}-{}'.format(
+                args.field, args.skip, args.ai_skip, args.hist_len, args.batch_size, args.lr, LAMB, os.path.basename('soccer').split('.')[0])))
         config = get_config()
         if args.load:
             config.session_init = SaverRestore(args.load)

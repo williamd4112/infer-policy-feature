@@ -21,11 +21,11 @@ from tensorpack.utils.concurrency import *
 from tensorpack.RL import *
 import tensorflow as tf
 
-from DQNPIModel import Model as DQNModel
+from DQNPIModel_multitask import Model as DQNModel
 import common
 from common import play_model, Evaluator, eval_model_multithread
-from soccer_env import SoccerPlayer
-from augment_expreplay import AugmentExpReplay
+from soccer_env_multitask import SoccerPlayer
+from augment_expreplay_multitask import AugmentExpReplay
 
 from tensorpack.tfutils import symbolic_functions as symbf
 
@@ -44,10 +44,11 @@ STEPS_PER_EPOCH = 1000 // UPDATE_FREQ * 10  # each epoch is 100k played frames
 EVAL_EPISODE = 50
 
 NUM_ACTIONS = None
+NUM_AGENTS = 3
 METHOD = None
 FIELD = None
-LR = None
 AI_SKIP = None
+LR = None
 LAMB = None
 
 def get_player(viz=False, train=False):
@@ -65,7 +66,7 @@ def get_player(viz=False, train=False):
 
 class Model(DQNModel):
     def __init__(self):
-        super(Model, self).__init__(IMAGE_SIZE, FRAME_HISTORY, METHOD, NUM_ACTIONS, GAMMA, LR, LAMB)
+        super(Model, self).__init__(IMAGE_SIZE, FRAME_HISTORY, METHOD, NUM_ACTIONS, NUM_AGENTS, GAMMA, LR, LAMB)
 
     def _get_DQN_prediction(self, image):
         """ image: [0,255]"""
@@ -81,9 +82,11 @@ class Model(DQNModel):
                      .Conv2D('conv2', out_channel=64, kernel_shape=3)())                    
                      #.FullyConnected('fc0', 512, nl=LeakyReLU)())
                 q_l = FullyConnected('fc0', h, 512, nl=LeakyReLU)
-                pi_l = FullyConnected('fcp', h, 512, nl=LeakyReLU)
-        pi_y = FullyConnected('fcpt', pi_l, self.num_actions, nl=tf.identity)
-        
+                pi_l = FullyConnected('fcp', h, 512, nl=LeakyReLU)            
+            pi_ys = []
+            for i in range(self.num_agents):
+                pi_ys.append(FullyConnected('fct-%d' % i, pi_l, self.num_actions, nl=tf.identity))
+
         l = tf.multiply(q_l, pi_l)
         
         if self.method != 'Dueling':
@@ -94,7 +97,7 @@ class Model(DQNModel):
             As = FullyConnected('fctA', l, self.num_actions, nl=tf.identity)
             Q = tf.add(As, V - tf.reduce_mean(As, 1, keep_dims=True))
 
-        return tf.identity(Q, name='Qvalue'), tf.identity(pi_y, name='Pivalue')
+        return tf.identity(Q, name='Qvalue'), [ tf.identity(pi_ys[i], name='Pivalue-%d' % i) for i in range(self.num_agents) ]
 
 def get_config():
     M = Model()
@@ -119,10 +122,10 @@ def get_config():
                 every_k_steps=10000 // UPDATE_FREQ),    # update target network every 10k steps
             expreplay,
             ScheduledHyperParamSetter('learning_rate',
-                                      [(600, 4e-4), (1000, 2e-4)]),
+                                      [(200, 4e-4), (400, 2e-4)]),
             ScheduledHyperParamSetter(
                 ObjAttrParam(expreplay, 'exploration'),
-                [(0, 1), (100, 0.1), (3200, 0.01)],   # 1->0.1 in the first million steps
+                [(0, 1), (400, 0.1), (800, 0.01)],   # 1->0.1 in the first million steps
                 interp='linear'),
             HumanHyperParamSetter('learning_rate'),
         ],
@@ -159,9 +162,9 @@ if __name__ == '__main__':
     FIELD = args.field
     FRAME_HISTORY = args.hist_len
     BATCH_SIZE = args.batch_size
-    LR = args.lr
     AI_SKIP = args.ai_skip
-    LAMB = args.lamb
+    LR = args.lr
+    LAMB = args.lamb    
 
     # set num_actions
     NUM_ACTIONS = SoccerPlayer().get_action_space().num_actions()
@@ -179,7 +182,7 @@ if __name__ == '__main__':
             eval_model_multithread(cfg, EVAL_EPISODE, get_player)
     else:
         logger.set_logger_dir(
-            os.path.join('train_log', 'DQNPI-aux-field-{}-skip-{}-ai_skip-{}-hist-{}-batch-{}-lr-{}-lamb-{}-{}'.format(
+            os.path.join('train_log', 'MT-DQNPI-aux-field-{}-skip-{}-ai_skip-{}-hist-{}-batch-{}-lr-{}-lamb-{}-{}'.format(
                 args.field, args.skip, args.ai_skip, args.hist_len, args.batch_size, args.lr, args.lamb, os.path.basename('soccer').split('.')[0])))
         config = get_config()
         if args.load:

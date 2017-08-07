@@ -21,7 +21,7 @@ from tensorpack.utils.concurrency import *
 from tensorpack.RL import *
 import tensorflow as tf
 
-from DQNPIModel import Model as DQNModel
+from DQNPIModel_both import Model as DQNModel
 import common
 from common import play_model, Evaluator, eval_model_multithread
 from soccer_env import SoccerPlayer
@@ -80,11 +80,10 @@ class Model(DQNModel):
                      .Conv2D('conv1', out_channel=64, kernel_shape=4, stride=2)
                      .Conv2D('conv2', out_channel=64, kernel_shape=3)())                    
                      #.FullyConnected('fc0', 512, nl=LeakyReLU)())
-                q_l = FullyConnected('fc0', h, 512, nl=LeakyReLU)
-                pi_l = FullyConnected('fcp', h, 512, nl=LeakyReLU)
-        pi_y = FullyConnected('fcpt', pi_l, self.num_actions, nl=tf.identity)
-        
-        l = tf.multiply(q_l, pi_l)
+                l = FullyConnected('fc0', h, 512, nl=LeakyReLU)
+
+        pi_opp = FullyConnected('fcp-o', h, self.num_actions, nl=tf.identity)
+        pi_self = FullyConnected('fcp-s', h, self.num_actions, nl=tf.identity)
         
         if self.method != 'Dueling':
             Q = FullyConnected('fct', l, self.num_actions, nl=tf.identity)
@@ -94,7 +93,7 @@ class Model(DQNModel):
             As = FullyConnected('fctA', l, self.num_actions, nl=tf.identity)
             Q = tf.add(As, V - tf.reduce_mean(As, 1, keep_dims=True))
 
-        return tf.identity(Q, name='Qvalue'), tf.identity(pi_y, name='Pivalue')
+        return tf.identity(Q, name='Qvalue'), [ tf.identity(pi_opp, name='Pivalue-o'), tf.identity(pi_self, name='Pivalue-s') ]
 
 def get_config():
     M = Model()
@@ -179,7 +178,7 @@ if __name__ == '__main__':
             eval_model_multithread(cfg, EVAL_EPISODE, get_player)
     else:
         logger.set_logger_dir(
-            os.path.join('train_log', 'DQNPI-aux-field-{}-skip-{}-ai_skip-{}-hist-{}-batch-{}-lr-{}-lamb-{}-{}'.format(
+            os.path.join('train_log', 'DQNPI-aux-both-field-{}-skip-{}-ai_skip-{}-hist-{}-batch-{}-lr-{}-lamb-{}-{}'.format(
                 args.field, args.skip, args.ai_skip, args.hist_len, args.batch_size, args.lr, args.lamb, os.path.basename('soccer').split('.')[0])))
         config = get_config()
         if args.load:
