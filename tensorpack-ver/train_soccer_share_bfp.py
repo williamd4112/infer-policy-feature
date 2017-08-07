@@ -232,7 +232,7 @@ if __name__ == '__main__':
         logger.set_logger_dir(
             os.path.join('train_log', 'DQNBFPI-SHARE-field-{}-skip-{}-hist-{}-batch-{}-{}-{}-{}-decay-{}-aiskip-{}'.format(
                 args.field, args.skip, args.hist_len, args.batch_size, os.path.basename('soccer').split('.')[0], LAMB,
-                'fast' if args.task else 'slow', args.fp_decay)))
+                'fast' if args.task else 'slow', args.fp_decay, args.ai_skip)))
         config = get_config()
         if args.load:
             config.session_init = SaverRestore(args.load)
