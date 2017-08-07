@@ -43,6 +43,7 @@ STEPS_PER_EPOCH = 10000 // UPDATE_FREQ * 10  # each epoch is 100k played frames
 EVAL_EPISODE = 50
 LAMB = 1.0
 LR = 1e-3
+AI_SKIP=2
 
 
 NUM_ACTIONS = None
@@ -51,7 +52,7 @@ FIELD = None
 USE_RNN = False
 
 def get_player(viz=False, train=False):
-    pl = SoccerPlayer(image_shape=IMAGE_SIZE[::-1], viz=viz, frame_skip=ACTION_REPEAT, field=FIELD, ai_frame_skip=2)
+    pl = SoccerPlayer(image_shape=IMAGE_SIZE[::-1], viz=viz, frame_skip=ACTION_REPEAT, field=FIELD, ai_frame_skip=AI_SKIP)
     if not train:
         # create a new axis to stack history on
         pl = MapPlayerState(pl, lambda im: im[:, :, np.newaxis])
@@ -155,9 +156,11 @@ def get_config():
                 every_k_steps=10000 // UPDATE_FREQ),    # update target network every 10k steps
             expreplay,
             ScheduledHyperParamSetter('learning_rate',
+                                      #[(60, 4e-4), (100, 2e-4)]),
                                       [(20, 4e-4), (40, 2e-4)]),
             ScheduledHyperParamSetter(
                 ObjAttrParam(expreplay, 'exploration'),
+                #[(0, 1), (10, 0.1), (320, 0.01)],   # 1->0.1 in the first million steps
                 [(0, 1), (40, 0.1), (80, 0.01)],   # 1->0.1 in the first million steps
                 interp='linear'),
             HumanHyperParamSetter('learning_rate'),
@@ -183,6 +186,7 @@ if __name__ == '__main__':
     parser.add_argument('--hist_len', help='hist len', type=int, required=True)
     parser.add_argument('--batch_size', help='batch size', type=int, required=True)
     parser.add_argument('--lamb', dest='lamb', type=float, default=1.0)
+    parser.add_argument('--ai_skip', dest='ai_skip', type=int, default=2)
     parser.add_argument('--rnn', dest='rnn', action='store_true')
 
     args = parser.parse_args()
@@ -197,6 +201,7 @@ if __name__ == '__main__':
     BATCH_SIZE = args.batch_size
     LAMB = args.lamb
     USE_RNN = args.rnn
+    AI_SKIP = args.ai_skip
 
     # set num_actions
     NUM_ACTIONS = SoccerPlayer().get_action_space().num_actions()

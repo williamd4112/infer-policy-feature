@@ -93,22 +93,19 @@ class Model(DQNModel):
                      .Conv2D('conv1', out_channel=64, kernel_shape=4, stride=4)
                      .Conv2D('conv2', out_channel=64, kernel_shape=3)
                      .FullyConnected('fc0', 512, nl=LeakyReLU)())
-            pi_h = tf.reshape(p_l, [self.batch_size, self.channel, 512])
-            pi_h, _ = tf.nn.dynamic_rnn(inputs=pi_h,
+                pi_h = tf.reshape(p_l, [self.batch_size, self.channel, 512])
+                pi_h, _ = tf.nn.dynamic_rnn(inputs=pi_h,
                             cell=tf.nn.rnn_cell.GRUCell(num_units=256),
                             dtype=tf.float32, scope='rnn')
 
-            pi_y = FullyConnected('fcpi0', pi_h, 128)
-            pi_y = LeakyReLU(pi_y, alpha=0.01)
-            pi_y = FullyConnected('fcpi2', pi_y, self.num_actions, nl=tf.identity)
+                pi_y = FullyConnected('fcpi0', pi_h, 128, nl=LeakyReLU)
+                pi_y = FullyConnected('fcpi2', pi_y, self.num_actions, nl=tf.identity)
 
-            bp_y = FullyConnected('fcbp0', pi_h, 128)
-            bp_y = LeakyReLU(bp_y, alpha=0.01)
-            bp_y = FullyConnected('fcbp2', bp_y, self.num_actions, nl=tf.identity)
+                bp_y = FullyConnected('fcbp0', pi_h, 128, nl=LeakyReLU)
+                bp_y = FullyConnected('fcbp2', bp_y, self.num_actions, nl=tf.identity)
 
-            fp_y = FullyConnected('fcfp0', pi_h, 128)
-            fp_y = LeakyReLU(fp_y, alpha=0.01)
-            fp_y = FullyConnected('fcfp2', fp_y, self.num_actions, nl=tf.identity)
+                fp_y = FullyConnected('fcfp0', pi_h, 128, nl=LeakyReLU)
+                fp_y = FullyConnected('fcfp2', fp_y, self.num_actions, nl=tf.identity)
 
         q_l = tf.reshape(q_l, [self.batch_size, self.channel, 256])
         l = tf.multiply(q_l, pi_h)
@@ -150,8 +147,8 @@ def get_config():
                                       [(40, 4e-4), (80, 2e-4)]),
             ScheduledHyperParamSetter(
                 ObjAttrParam(expreplay, 'exploration'),
-                #[(0, 1), (10, 0.1), (320, 0.01)],   # 1->0.1 in the first million steps
-                [(0, 1), (40, 0.1), (80, 0.01)],   # 1->0.1 in the first million steps
+                [(0, 1), (10, 0.1), (320, 0.01)],   # 1->0.1 in the first million steps
+                #[(0, 1), (40, 0.1), (80, 0.01)],   # 1->0.1 in the first million steps
                 interp='linear'),
             HumanHyperParamSetter('learning_rate'),
         ],

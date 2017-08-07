@@ -42,6 +42,7 @@ INIT_EXP = 1.0
 STEPS_PER_EPOCH = 10000 // UPDATE_FREQ * 10  # each epoch is 100k played frames
 EVAL_EPISODE = 50
 LAMB = 1.0
+FP_DECAY = 0.1
 LR = 1e-3
 
 
@@ -65,14 +66,16 @@ def get_player(viz=False, train=False):
 
 class Model(DQNModel):
     def __init__(self):
-        super(Model, self).__init__(IMAGE_SIZE, FRAME_HISTORY, METHOD, NUM_ACTIONS, GAMMA, lr=LR, lamb=LAMB)
+        super(Model, self).__init__(IMAGE_SIZE, FRAME_HISTORY, METHOD, NUM_ACTIONS, GAMMA, lr=LR, lamb=LAMB, fp_decay=FP_DECAY)
 
     def _get_DQN_prediction(self, image):
         """ image: [0,255]"""
         image = image / 255.0
         self.batch_size = tf.shape(image)[0]
-        image = tf.transpose(image, perm=[0, 3, 1, 2])
-        image = tf.reshape(image, (self.batch_size * self.channel,) + self.image_shape + (1,))
+
+        if USE_RNN:
+            image = tf.transpose(image, perm=[0, 3, 1, 2])
+            image = tf.reshape(image, (self.batch_size * self.channel,) + self.image_shape + (1,))
 
         with tf.variable_scope('network'):
             with argscope(Conv2D, nl=PReLU.symbolic_function, use_bias=True), \
@@ -84,26 +87,35 @@ class Model(DQNModel):
 
                 p_c = Conv2D('pconv0', s_l, out_channel=64, kernel_shape=3)
                 p_l = FullyConnected('pfc0', p_c, 512, nl=LeakyReLU)
-                p_h = tf.reshape(p_l, [self.batch_size, self.channel, 512])
-                p_h = tf.nn.dynamic_rnn(inputs=p_h,
-                        cell=tf.nn.rnn_cell.GRUCell(num_units=256),
-                        dtype=tf.float32, scope='prnn')
+
+                if USE_RNN:
+                    p_h = tf.reshape(p_l, [self.batch_size, self.channel, 512])
+                    p_h, _ = tf.nn.dynamic_rnn(inputs=p_h,
+                             cell=tf.nn.rnn_cell.GRUCell(num_units=256),
+                             dtype=tf.float32, scope='prnn')
+                else:
+                    p_h = FullyConnected('pfc1', p_l, 256, nl=LeakyReLU)
 
                 q_c = Conv2D('qconv0', s_l, out_channel=64, kernel_shape=3)
                 q_l = FullyConnected('qfc0', q_c, 512, nl=LeakyReLU)
-                q_h = tf.reshape(q_h, [self.batch_size, self.channel, 512])
-                q_h = tf.nn.dynamic_rnn(inputs=q_h,
-                        cell=tf.nn.rnn_cell.GRUCell(num_units=256),
-                        dtype=tf.float32, scope='qrnn')
 
-                l = tf.multiply(q_h, p_h)
-                pi_y = FullyConnected('fcpi0', l, 256, nl=LeakyReLU)
+                if USE_RNN:
+                    q_h = tf.reshape(q_l, [self.batch_size, self.channel, 512])
+                    q_h, _ = tf.nn.dynamic_rnn(inputs=q_h,
+                             cell=tf.nn.rnn_cell.GRUCell(num_units=256),
+                             dtype=tf.float32, scope='qrnn')
+                else:
+                    q_h = FullyConnected('qfc1', q_l, 256, nl=LeakyReLU)
+
+
+                l = tf.multiply(q_h, p_h, name='mul')
+                pi_y = FullyConnected('fcpi0', l, 128, nl=LeakyReLU)
                 pi_y = FullyConnected('fcpi2', pi_y, self.num_actions, nl=tf.identity)
 
-                bp_y = FullyConnected('fcbp0', l, 256, nl=LeakyReLU)
+                bp_y = FullyConnected('fcbp0', l, 128, nl=LeakyReLU)
                 bp_y = FullyConnected('fcbp2', bp_y, self.num_actions, nl=tf.identity)
 
-                fp_y = FullyConnected('fcfp0', l, 256, nlLeakyReLU)
+                fp_y = FullyConnected('fcfp0', l, 128, nl=LeakyReLU)
                 fp_y = FullyConnected('fcfp2', fp_y, self.num_actions, nl=tf.identity)
                 q_f = FullyConnected('qf', l, 256, nl=LeakyReLU)
 
@@ -170,6 +182,7 @@ if __name__ == '__main__':
     parser.add_argument('--hist_len', help='hist len', type=int, required=True)
     parser.add_argument('--batch_size', help='batch size', type=int, required=True)
     parser.add_argument('--lamb', dest='lamb', type=float, default=1.0)
+    parser.add_argument('--fp_decay', dest='fp_decay', type=float, default=0.1)
     parser.add_argument('--rnn', dest='rnn', action='store_true')
 
     args = parser.parse_args()
@@ -184,6 +197,7 @@ if __name__ == '__main__':
     BATCH_SIZE = args.batch_size
     LAMB = args.lamb
     USE_RNN = args.rnn
+    FP_DECAY = args.fp_decay
 
     # set num_actions
     NUM_ACTIONS = SoccerPlayer().get_action_space().num_actions()
@@ -201,7 +215,7 @@ if __name__ == '__main__':
             eval_model_multithread(cfg, EVAL_EPISODE, get_player)
     else:
         logger.set_logger_dir(
-            os.path.join('train_log', 'DQNBFPI-NEW-field-{}-skip-{}-hist-{}-batch-{}-{}-{}_fast'.format(
+            os.path.join('train_log', 'DQNBFPI-SHARE-field-{}-skip-{}-hist-{}-batch-{}-{}-{}_fast_decay'.format(
                 args.field, args.skip, args.hist_len, args.batch_size, os.path.basename('soccer').split('.')[0], LAMB)))
         config = get_config()
         if args.load:
