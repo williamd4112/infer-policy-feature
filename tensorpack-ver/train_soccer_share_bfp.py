@@ -47,6 +47,7 @@ LR = 1e-3
 EXP_RATE = None
 LR_RATE = None
 AI_SKIP = 2
+SEP = False
 
 
 NUM_ACTIONS = None
@@ -110,15 +111,20 @@ class Model(DQNModel):
                 else:
                     q_h = FullyConnected('qfc1', q_l, 256, nl=LeakyReLU)
 
+                if not SEP :
+                    l = tf.multiply(q_h, p_h, name='mul')
+                    pi_y = FullyConnected('fcpi0', l, 128, nl=LeakyReLU)
+                    bp_y = FullyConnected('fcbp0', l, 128, nl=LeakyReLU)
+                    fp_y = FullyConnected('fcfp0', l, 128, nl=LeakyReLU)
+                else :
+                    l = tf.multiply(q_h, p_h, name='mul')
+                    pi_y = p_h
+                    bp_y = p_h
+                    fp_y = p_h
 
-                l = tf.multiply(q_h, p_h, name='mul')
-                pi_y = FullyConnected('fcpi0', l, 128, nl=LeakyReLU)
+
                 pi_y = FullyConnected('fcpi2', pi_y, self.num_actions, nl=tf.identity)
-
-                bp_y = FullyConnected('fcbp0', l, 128, nl=LeakyReLU)
                 bp_y = FullyConnected('fcbp2', bp_y, self.num_actions, nl=tf.identity)
-
-                fp_y = FullyConnected('fcfp0', l, 128, nl=LeakyReLU)
                 fp_y = FullyConnected('fcfp2', fp_y, self.num_actions, nl=tf.identity)
                 q_f = FullyConnected('qf', l, 256, nl=LeakyReLU)
 
@@ -191,6 +197,7 @@ if __name__ == '__main__':
     parser.add_argument('--ai_skip', dest='ai_skip', type=float, default=2)
     parser.add_argument('--rnn', dest='rnn', action='store_true')
     parser.add_argument('--fast', dest='fast', action='store_true')
+    parser.add_argument('--sep', dest='sep', action='store_true')
 
     args = parser.parse_args()
 
@@ -206,6 +213,7 @@ if __name__ == '__main__':
     USE_RNN = args.rnn
     FP_DECAY = args.fp_decay
     AI_SKIP = args.ai_skip
+    SEP = args.sep
 
     if args.fast:
         LR_RATE = [(20, 4e-4), (40, 2e-4)]
@@ -230,9 +238,10 @@ if __name__ == '__main__':
             eval_model_multithread(cfg, EVAL_EPISODE, get_player)
     else:
         logger.set_logger_dir(
-            os.path.join('train_log', 'DQNBFPI-SHARE-field-{}-skip-{}-hist-{}-batch-{}-{}-{}-{}-decay-{}-aiskip-{}'.format(
+            os.path.join('train_log',
+                'DQNBFPI-SHARE-field-{}-skip-{}-hist-{}-batch-{}-{}-{}-{}-decay-{}-aiskip-{}-{}'.format(
                 args.field, args.skip, args.hist_len, args.batch_size, os.path.basename('soccer').split('.')[0], LAMB,
-                'fast' if args.task else 'slow', args.fp_decay, args.ai_skip)))
+                'fast' if args.task else 'slow', args.fp_decay, args.ai_skip, 'sep' if args.sep else '')))
         config = get_config()
         if args.load:
             config.session_init = SaverRestore(args.load)
