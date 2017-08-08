@@ -196,9 +196,9 @@ if __name__ == '__main__':
     RNN_CELL = args.cell
 
     if USE_RNN:
-        MODEL_NAME = 'DRQN-PI-%s' % RNN_CELL
+        MODEL_NAME = 'DRQNPI-%s' % RNN_CELL
     else:
-        MODEL_NAME = 'DQN-PI'
+        MODEL_NAME = 'DQNPI'
 
     logger.info('USE_RNN = {}'.format(USE_RNN))
 

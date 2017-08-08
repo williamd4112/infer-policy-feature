@@ -15,7 +15,7 @@ from tensorpack.tfutils import symbolic_functions as symbf
 
 
 class Model(ModelDesc):
-    def __init__(self, image_shape, channel, method, num_actions, gamma, lr=1e-3, lamb=1.0):
+    def __init__(self, image_shape, channel, method, num_actions, gamma, lr=1e-3, lamb=1.0, keep_state=False):
         self.image_shape = image_shape
         self.channel = channel
         self.method = method
@@ -23,28 +23,48 @@ class Model(ModelDesc):
         self.gamma = gamma
         self.lr = lr
         self.lamb = lamb
+        self.keep_state = keep_state
+        self.h_size = 512
 
     def _get_inputs(self):
         # Use a combined state for efficiency.
         # The first h channels are the current state, and the last h channels are the next state.
-        return [InputDesc(tf.uint8,
+        if self.keep_state:
+            return [InputDesc(tf.uint8,
                           (None,) + self.image_shape + (self.channel + 1,),
                           'comb_state'),
-                InputDesc(tf.int64, (None,), 'action'),
-                InputDesc(tf.float32, (None,), 'reward'),
-                InputDesc(tf.bool, (None,), 'isOver'),
-                InputDesc(tf.int64, (None,), 'action_o')]
+                    InputDesc(tf.int64, (None,), 'action'),
+                    InputDesc(tf.float32, (None,), 'reward'),
+                    InputDesc(tf.bool, (None,), 'isOver'),
+                    InputDesc(tf.int64, (None,), 'action_o'),
+                    InputDesc(tf.float32, (None, 2, self.h_size), 'q_rnn_state'),
+                    InputDesc(tf.float32, (None, 2, self.h_size), 'pi_rnn_state')]
+        else:
+            return [InputDesc(tf.uint8,
+                              (None,) + self.image_shape + (self.channel + 1,),
+                              'comb_state'),
+                    InputDesc(tf.int64, (None,), 'action'),
+                    InputDesc(tf.float32, (None,), 'reward'),
+                    InputDesc(tf.bool, (None,), 'isOver'),
+                    InputDesc(tf.int64, (None,), 'action_o')]
 
     @abc.abstractmethod
     def _get_DQN_prediction(self, image):
         pass
 
     def _build_graph(self, inputs):
-        comb_state, action, reward, isOver, action_o = inputs
+        if self.keep_state:
+            comb_state, action, reward, isOver, action_o, q_rnn_state, pi_rnn_state = inputs
+        else:
+            comb_state, action, reward, isOver, action_o = inputs
         comb_state = tf.cast(comb_state, tf.float32)
         state = tf.slice(comb_state, [0, 0, 0, 0], [-1, -1, -1, self.channel], name='state')
+    
+        if self.keep_state:
+            self.q_rnn_state = tf.identity(pi_rnn_state, name='q_rnn_state_in')
+            self.pi_rnn_state = tf.identity(pi_rnn_state, name='pi_rnn_state_in')
 
-        self.predict_value, pi_value = self._get_DQN_prediction(state)
+        self.predict_value, pi_value, self.q_rnn_state_out, self.pi_rnn_state_out = self._get_DQN_prediction(state)
         if not get_current_tower_context().is_training:
             return
 
@@ -60,7 +80,7 @@ class Model(ModelDesc):
 
         with tf.variable_scope('target'), \
                 collection.freeze_collection([tf.GraphKeys.TRAINABLE_VARIABLES]):
-            targetQ_predict_value, target_pi_value = self._get_DQN_prediction(next_state)    # NxA
+            targetQ_predict_value, target_pi_value, _, _ = self._get_DQN_prediction(next_state)    # NxA
 
         if self.method != 'Double':
             # DQN
@@ -69,7 +89,7 @@ class Model(ModelDesc):
             # Double-DQN
             sc = tf.get_variable_scope()
             with tf.variable_scope(sc, reuse=True):
-                next_predict_value, next_pi_value = self._get_DQN_prediction(next_state)
+                next_predict_value, next_pi_value, _, _ = self._get_DQN_prediction(next_state)
             self.greedy_choice = tf.argmax(next_predict_value, 1)   # N,
             predict_onehot = tf.one_hot(self.greedy_choice, self.num_actions, 1.0, 0.0)
             best_v = tf.reduce_sum(targetQ_predict_value * predict_onehot, 1)

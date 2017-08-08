@@ -25,7 +25,6 @@ from DQNPIModel import Model as DQNModel
 import common
 from common import play_model, Evaluator, eval_model_multithread
 from soccer_env import SoccerPlayer
-from augment_expreplay import AugmentExpReplay
 
 from tensorpack.tfutils import symbolic_functions as symbf
 
@@ -74,7 +73,18 @@ def get_rnn_cell():
 
 class Model(DQNModel):
     def __init__(self):
-        super(Model, self).__init__(IMAGE_SIZE, FRAME_HISTORY, METHOD, NUM_ACTIONS, GAMMA, LR, LAMB)
+        super(Model, self).__init__(IMAGE_SIZE, FRAME_HISTORY, METHOD, NUM_ACTIONS, GAMMA, LR, LAMB, KEEP_STATE)
+    
+    def get_rnn_init_state(self):
+        if self.keep_state:
+            if RNN_CELL == 'gru':
+                raise NotImplemented()
+            elif RNN_CELL == 'lstm':
+                return tf.contrib.rnn.LSTMStateTuple(self.pi_rnn_state[:, 0, :], self.pi_rnn_state[:, 1, :])
+            else:
+                assert 0
+        else:
+            return None
 
     def _get_DQN_prediction(self, image):
         """ image: [0,255]"""
@@ -98,14 +108,16 @@ class Model(DQNModel):
                 if USE_RNN:
                     # q
                     q_l = tf.reshape(q_l, [self.batch_size, self.channel, 512])
-                    q_l, _ = tf.nn.dynamic_rnn(inputs=q_l, 
+                    q_l, q_rnn_state_out = tf.nn.dynamic_rnn(inputs=q_l, 
                                 cell=get_rnn_cell(), 
+                                initial_state=self.get_rnn_init_state(),
                                 dtype=tf.float32, scope='rnn-q')
                     q_l = q_l[:, -1, :]
                     # pi
                     pi_l = tf.reshape(pi_l, [self.batch_size, self.channel, 512])
-                    pi_l, _ = tf.nn.dynamic_rnn(inputs=pi_l, 
-                                cell=get_rnn_cell(), 
+                    pi_l, pi_rnn_state_out = tf.nn.dynamic_rnn(inputs=pi_l, 
+                                cell=get_rnn_cell(),
+                                initial_state=self.get_rnn_init_state(),
                                 dtype=tf.float32, scope='rnn-pi')
                     pi_l = pi_l[:, -1, :]
 
@@ -121,12 +133,21 @@ class Model(DQNModel):
             As = FullyConnected('fctA', l, self.num_actions, nl=tf.identity)
             Q = tf.add(As, V - tf.reduce_mean(As, 1, keep_dims=True))
 
-        return tf.identity(Q, name='Qvalue'), tf.identity(pi_y, name='Pivalue')
+        if self.keep_state:
+            return tf.identity(Q, name='Qvalue'), tf.identity(pi_y, name='Pivalue'), \
+                tf.identity(q_rnn_state_out, name='q_rnn_state_out'), tf.identity(pi_rnn_state_out, name='pi_rnn_state_out')
+        else:
+            return tf.identity(Q, name='Qvalue'), tf.identity(pi_y, name='Pivalue')
 
 def get_config():
+    if KEEP_STATE:
+        predictor_io_names=(['state', 'q_rnn_state_in', 'pi_rnn_state_in'], ['Qvalue', 'q_rnn_state_out', 'pi_rnn_state_out'])
+    else:
+        predictor_io_names=(['state'], ['Qvalue'])
+
     M = Model()
     expreplay = AugmentExpReplay(
-        predictor_io_names=(['state'], ['Qvalue']),
+        predictor_io_names=predictor_io_names,
         player=get_player(train=True),
         state_shape=IMAGE_SIZE,
         batch_size=BATCH_SIZE,
@@ -170,7 +191,7 @@ if __name__ == '__main__':
     parser.add_argument('--algo', help='algorithm',
                         choices=['DQN', 'Double', 'Dueling'], default='DQN')
     parser.add_argument('--cell', help='cell',
-                        choices=['gru', 'lstm'], required=True)
+                        choices=['gru', 'lstm', None], default=None)
     parser.add_argument('--skip', help='act repeat', type=int, required=True)
     parser.add_argument('--ai_skip', help='ai act repeat', type=int, required=True)
     parser.add_argument('--field', help='field type', type=str, choices=['small', 'large'], required=True)
@@ -179,6 +200,7 @@ if __name__ == '__main__':
     parser.add_argument('--lr', help='lr', type=float, required=True)
     parser.add_argument('--lamb', help='lamb', type=float, required=True)
     parser.add_argument('--rnn', help='use_rnn', type=str, required=True)
+    parser.add_argument('--keep_state', help='keep state', type=int, default=0)
     args = parser.parse_args()
 
     if args.gpu:
@@ -192,15 +214,26 @@ if __name__ == '__main__':
     LR = args.lr
     AI_SKIP = args.ai_skip
     LAMB = args.lamb
-    USE_RNN = bool(args.rnn) 
+    USE_RNN = bool(int(args.rnn))
     RNN_CELL = args.cell
-
-    if USE_RNN:
-        MODEL_NAME = 'DRQN-PI-%s' % RNN_CELL
-    else:
-        MODEL_NAME = 'DQN-PI'
+    KEEP_STATE = bool(args.keep_state)
 
     logger.info('USE_RNN = {}'.format(USE_RNN))
+
+    if KEEP_STATE:
+        assert USE_RNN, 'CNN model not compatiable with keep_state'
+        from augment_expreplay_keep_state import AugmentExpReplay
+        input_names = ['state', 'q_rnn_state_in', 'pi_rnn_state_in']
+        output_names = ['Qvalue', 'q_rnn_state_out', 'pi_rnn_state_out']
+    else:
+        from augment_expreplay import AugmentExpReplay
+        input_names=['state']
+        output_names=['Qvalue']
+
+    if USE_RNN:
+        MODEL_NAME = '%s-RPI-keep-%s-%s' % (args.algo, KEEP_STATE, RNN_CELL)
+    else:
+        MODEL_NAME = '%s-PI' % (args.algo)
 
     # set num_actions
     NUM_ACTIONS = SoccerPlayer().get_action_space().num_actions()
@@ -210,8 +243,8 @@ if __name__ == '__main__':
         cfg = PredictConfig(
             model=Model(),
             session_init=get_model_loader(args.load),
-            input_names=['state'],
-            output_names=['Qvalue'])
+            input_names=input_names,
+            output_names=output_names)
         if args.task == 'play':
             play_model(cfg, get_player(viz=1))
         elif args.task == 'eval':

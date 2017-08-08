@@ -76,17 +76,7 @@ class Model(DQNModel):
                      # Nature architecture
                      .Conv2D('conv0', out_channel=32, kernel_shape=8, stride=4)
                      .Conv2D('conv1', out_channel=64, kernel_shape=4, stride=2)
-                     .Conv2D('conv2', out_channel=64, kernel_shape=3)
-
-                     # architecture used for the figure in the README, slower but takes fewer iterations to converge
-                     # .Conv2D('conv0', out_channel=32, kernel_shape=5)
-                     # .MaxPooling('pool0', 2)
-                     # .Conv2D('conv1', out_channel=32, kernel_shape=5)
-                     # .MaxPooling('pool1', 2)
-                     # .Conv2D('conv2', out_channel=64, kernel_shape=4)
-                     # .MaxPooling('pool2', 2)
-                     # .Conv2D('conv3', out_channel=64, kernel_shape=3)
-                    
+                     .Conv2D('conv2', out_channel=64, kernel_shape=3)                   
                      .FullyConnected('fc0', 512, nl=LeakyReLU)())
 
         with tf.variable_scope('pi'):

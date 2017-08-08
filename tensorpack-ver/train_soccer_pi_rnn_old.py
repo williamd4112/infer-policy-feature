@@ -46,6 +46,8 @@ NUM_ACTIONS = None
 METHOD = None
 FIELD = None
 AI_SKIP = None
+LR = None
+LAMB = None
 
 def get_player(viz=False, train=False):
     logger.info('Frame skip = %d, Field = %s' % (ACTION_REPEAT, FIELD))
@@ -62,7 +64,7 @@ def get_player(viz=False, train=False):
 
 class Model(DQNModel):
     def __init__(self):
-        super(Model, self).__init__(IMAGE_SIZE, FRAME_HISTORY, METHOD, NUM_ACTIONS, GAMMA)
+        super(Model, self).__init__(IMAGE_SIZE, FRAME_HISTORY, METHOD, NUM_ACTIONS, GAMMA, LR, LAMB)
 
     def _get_DQN_prediction(self, image):
         """ image: [0,255]"""
@@ -144,10 +146,10 @@ def get_config():
                 every_k_steps=10000 // UPDATE_FREQ),    # update target network every 10k steps
             expreplay,
             ScheduledHyperParamSetter('learning_rate',
-                                      [(200, 4e-4), (400, 2e-4)]),
+                                      [(600, 4e-4), (1000, 2e-4)]),
             ScheduledHyperParamSetter(
                 ObjAttrParam(expreplay, 'exploration'),
-                [(0, 1), (400, 0.1), (800, 0.01)],   # 1->0.1 in the first million steps
+                [(0, 1), (100, 0.1), (3200, 0.01)],   # 1->0.1 in the first million steps
                 interp='linear'),
             HumanHyperParamSetter('learning_rate'),
         ],
@@ -171,6 +173,8 @@ if __name__ == '__main__':
     parser.add_argument('--field', help='field type', type=str, choices=['small', 'large'], required=True)
     parser.add_argument('--hist_len', help='hist len', type=int, required=True)
     parser.add_argument('--batch_size', help='batch size', type=int, required=True)
+    parser.add_argument('--lr', help='lr', type=float, required=True)
+    parser.add_argument('--lamb', help='lamb', type=float, required=True)
     args = parser.parse_args()
 
     if args.gpu:
@@ -182,6 +186,8 @@ if __name__ == '__main__':
     FRAME_HISTORY = args.hist_len
     BATCH_SIZE = args.batch_size
     AI_SKIP = args.ai_skip
+    LR = args.lr
+    LAMB = args.lamb
         
     # set num_actions
     NUM_ACTIONS = SoccerPlayer().get_action_space().num_actions()
@@ -199,8 +205,8 @@ if __name__ == '__main__':
             eval_model_multithread(cfg, EVAL_EPISODE, get_player)
     else:
         logger.set_logger_dir(
-            os.path.join('train_log', 'DRQNPI-old-field-{}-skip-{}-ai_skip-{}-hist-{}-batch-{}-{}'.format(
-                args.field, args.skip, args.ai_skip, args.hist_len, args.batch_size, os.path.basename('soccer').split('.')[0])))
+            os.path.join('train_log', 'DRQNPI-old-field-{}-skip-{}-ai_skip-{}-hist-{}-batch-{}-lr-{}-lamb-{}-{}'.format(
+                args.field, args.skip, args.ai_skip, args.hist_len, args.batch_size, args.lr, args.lamb, os.path.basename('soccer').split('.')[0])))
         config = get_config()
         if args.load:
             config.session_init = SaverRestore(args.load)
