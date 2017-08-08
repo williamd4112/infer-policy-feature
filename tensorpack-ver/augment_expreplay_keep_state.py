@@ -136,6 +136,11 @@ class AugmentExpReplay(ExpReplay, Callback):
         action_o = self.player.get_internal_state()['opponent_action']
         self.mem.append(AugmentExperience(old_s, act, reward, isOver, action_o))
 
+        if isOver:
+            self.q_rnn_state.fill(0)
+            self.pi_rnn_state.fill(0)
+
+
     def _process_batch(self, batch_exp):
         state = np.asarray([e[0] for e in batch_exp], dtype='uint8')
         reward = np.asarray([e[1] for e in batch_exp], dtype='float32')
