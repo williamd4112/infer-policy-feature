@@ -85,8 +85,10 @@ class Model(DQNModel):
             elif RNN_CELL == 'lstm':
                 if name == 'pi':
                     return tf.contrib.rnn.LSTMStateTuple(self.pi_rnn_state[:, 0, :], self.pi_rnn_state[:, 1, :])
-                else:                    
+                elif name == 'q':
                     return tf.contrib.rnn.LSTMStateTuple(self.q_rnn_state[:, 0, :], self.q_rnn_state[:, 1, :])
+                else:
+                    assert 0
             else:
                 assert 0
         else:
