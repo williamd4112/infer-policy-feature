@@ -48,12 +48,14 @@ EXP_RATE = None
 LR_RATE = None
 AI_SKIP = 2
 SEP = False
+FULLY_SHARE = False
 
 
 NUM_ACTIONS = None
 METHOD = None
 FIELD = None
 USE_RNN = False
+MIX = False
 
 def get_player(viz=False, train=False):
     pl = SoccerPlayer(image_shape=IMAGE_SIZE[::-1], viz=viz, frame_skip=ACTION_REPEAT, field=FIELD, ai_frame_skip=AI_SKIP)
@@ -89,8 +91,15 @@ class Model(DQNModel):
                 s_l = Conv2D('conv0', image, out_channel=32, kernel_shape=8, stride=4)
                 s_l = Conv2D('conv1', s_l, out_channel=64, kernel_shape=4, stride=2)
 
-                p_c = Conv2D('pconv0', s_l, out_channel=64, kernel_shape=3)
+                if not FULLY_SHARE :
+                    p_c = Conv2D('pconv0', s_l, out_channel=64, kernel_shape=3)
+                    q_c = Conv2D('qconv0', s_l, out_channel=64, kernel_shape=3)
+                else :
+                    p_c = q_c = Conv2D('conv2', s_l, out_channel=64, kernel_shape=3)
+
+
                 p_l = FullyConnected('pfc0', p_c, 512, nl=LeakyReLU)
+                q_l = FullyConnected('qfc0', q_c, 512, nl=LeakyReLU)
 
                 if USE_RNN:
                     p_h = tf.reshape(p_l, [self.batch_size, self.channel, 512])
@@ -100,8 +109,6 @@ class Model(DQNModel):
                 else:
                     p_h = FullyConnected('pfc1', p_l, 256, nl=LeakyReLU)
 
-                q_c = Conv2D('qconv0', s_l, out_channel=64, kernel_shape=3)
-                q_l = FullyConnected('qfc0', q_c, 512, nl=LeakyReLU)
 
                 if USE_RNN:
                     q_h = tf.reshape(q_l, [self.batch_size, self.channel, 512])
@@ -110,6 +117,7 @@ class Model(DQNModel):
                              dtype=tf.float32, scope='qrnn')
                 else:
                     q_h = FullyConnected('qfc1', q_l, 256, nl=LeakyReLU)
+
 
                 if not SEP :
                     l = tf.multiply(q_h, p_h, name='mul')
@@ -122,11 +130,11 @@ class Model(DQNModel):
                     bp_y = p_h
                     fp_y = p_h
 
-
+                q_f = FullyConnected('qf', l, 256, nl=LeakyReLU)
                 pi_y = FullyConnected('fcpi2', pi_y, self.num_actions, nl=tf.identity)
                 bp_y = FullyConnected('fcbp2', bp_y, self.num_actions, nl=tf.identity)
-                fp_y = FullyConnected('fcfp2', fp_y, self.num_actions, nl=tf.identity)
-                q_f = FullyConnected('qf', l, 256, nl=LeakyReLU)
+                if not MIX :
+                    fp_y = FullyConnected('fcfp2', fp_y, self.num_actions, nl=tf.identity)
 
         if self.method != 'Dueling':
             Q = FullyConnected('fct', q_f, self.num_actions, nl=tf.identity)
@@ -135,6 +143,15 @@ class Model(DQNModel):
             V = FullyConnected('fctV', q_f, 1, nl=tf.identity)
             As = FullyConnected('fctA', q_f, self.num_actions, nl=tf.identity)
             Q = tf.add(As, V - tf.reduce_mean(As, 1, keep_dims=True))
+
+        """
+        if MIX :
+            fp_y = tf.multiply(Q, fp_y, name='mix')
+        """
+        if MIX :
+            conc = tf.concat([pi_y, bp_y, Q, fp_y], axis=1)
+            fp_y = FullyConnected('fpyconc', conc, self.num_actions, nl=tf.identity)
+
 
         return tf.identity(Q, name='Qvalue'), tf.identity(pi_y, name='Pivalue'), tf.identity(bp_y, name='Bpvalue'), tf.identity(fp_y, name='Fpvalue')
 
@@ -198,6 +215,8 @@ if __name__ == '__main__':
     parser.add_argument('--rnn', dest='rnn', action='store_true')
     parser.add_argument('--fast', dest='fast', action='store_true')
     parser.add_argument('--sep', dest='sep', action='store_true')
+    parser.add_argument('--full', dest='full', action='store_true')
+    parser.add_argument('--mix', dest='mix', action='store_true')
 
     args = parser.parse_args()
 
@@ -214,9 +233,11 @@ if __name__ == '__main__':
     FP_DECAY = args.fp_decay
     AI_SKIP = args.ai_skip
     SEP = args.sep
+    FULLY_SHARE = args.full
+    MIX = args.mix
 
     if args.fast:
-        LR_RATE = [(20, 4e-4), (40, 2e-4)]
+        LR_RATE = [(60, 4e-4), (100, 2e-4)]
         EXP_RATE = [(0, 1), (10, 0.1), (320, 0.01)]
     else:
         LR_RATE = [(40, 4e-4), (80, 2e-4)]
@@ -239,9 +260,10 @@ if __name__ == '__main__':
     else:
         logger.set_logger_dir(
             os.path.join('train_log',
-                'DQNBFPI-SHARE-field-{}-skip-{}-hist-{}-batch-{}-{}-{}-{}-decay-{}-aiskip-{}-{}'.format(
+                'DQNBFPI-SHARE-field-{}-skip-{}-hist-{}-batch-{}-{}-{}-{}-decay-{}-aiskip-{}-{}-{}-{}'.format(
                 args.field, args.skip, args.hist_len, args.batch_size, os.path.basename('soccer').split('.')[0], LAMB,
-                'fast' if args.task else 'slow', args.fp_decay, args.ai_skip, 'sep' if args.sep else '')))
+                'fast' if args.fast else 'slow', args.fp_decay, args.ai_skip, 'sep' if args.sep else '',
+                'full' if args.full else  '', 'cmix' if args.mix else '')))
         config = get_config()
         if args.load:
             config.session_init = SaverRestore(args.load)
