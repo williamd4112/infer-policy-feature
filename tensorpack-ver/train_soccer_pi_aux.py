@@ -137,7 +137,7 @@ class Model(DQNModel):
             return tf.identity(Q, name='Qvalue'), tf.identity(pi_y, name='Pivalue'), \
                 tf.identity(q_rnn_state_out, name='q_rnn_state_out'), tf.identity(pi_rnn_state_out, name='pi_rnn_state_out')
         else:
-            return tf.identity(Q, name='Qvalue'), tf.identity(pi_y, name='Pivalue')
+            return tf.identity(Q, name='Qvalue'), tf.identity(pi_y, name='Pivalue'), None, None
 
 def get_config():
     if KEEP_STATE:
