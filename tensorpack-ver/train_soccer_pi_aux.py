@@ -18,6 +18,7 @@ from collections import deque
 
 from tensorpack import *
 from tensorpack.utils.concurrency import *
+from tensorpack.tfutils import symbolic_functions as symbf
 from tensorpack.RL import *
 import tensorflow as tf
 
@@ -50,6 +51,8 @@ AI_SKIP = None
 LAMB = None
 USE_RNN = False
 RNN_CELL = None
+NO_FC = False
+SINGLE_RNN = False
 
 def get_player(viz=False, train=False):
     pl = SoccerPlayer(image_shape=IMAGE_SIZE[::-1], viz=viz, frame_skip=ACTION_REPEAT, field=FIELD, ai_frame_skip=AI_SKIP)
@@ -75,12 +78,15 @@ class Model(DQNModel):
     def __init__(self):
         super(Model, self).__init__(IMAGE_SIZE, FRAME_HISTORY, METHOD, NUM_ACTIONS, GAMMA, LR, LAMB, KEEP_STATE)
     
-    def get_rnn_init_state(self):
+    def get_rnn_init_state(self, name):
         if self.keep_state:
             if RNN_CELL == 'gru':
                 raise NotImplemented()
             elif RNN_CELL == 'lstm':
-                return tf.contrib.rnn.LSTMStateTuple(self.pi_rnn_state[:, 0, :], self.pi_rnn_state[:, 1, :])
+                if name == 'pi':
+                    return tf.contrib.rnn.LSTMStateTuple(self.pi_rnn_state[:, 0, :], self.pi_rnn_state[:, 1, :])
+                else:                    
+                    return tf.contrib.rnn.LSTMStateTuple(self.q_rnn_state[:, 0, :], self.q_rnn_state[:, 1, :])
             else:
                 assert 0
         else:
@@ -98,32 +104,47 @@ class Model(DQNModel):
         with tf.variable_scope('q'):
             with argscope(Conv2D, nl=PReLU.symbolic_function, use_bias=True), \
                     argscope(LeakyReLU, alpha=0.01):
+                padding = 'VALID' if NO_FC else 'SAME'               
                 h = (LinearWrap(image)
                      .Conv2D('conv0', out_channel=32, kernel_shape=8, stride=4)
                      .Conv2D('conv1', out_channel=64, kernel_shape=4, stride=2)
                      .Conv2D('conv2', out_channel=64, kernel_shape=3)())                    
-                q_l = FullyConnected('fc0-q', h, 512, nl=LeakyReLU)
-                pi_l = FullyConnected('fc0-pi', h, 512, nl=LeakyReLU)
+
+                if NO_FC:
+                    q_l = Conv2D('conv-q', h, out_channel=512, kernel_shape=7, stride=1, padding=padding)
+                    q_l = symbf.batch_flatten(q_l)
+                    pi_l = Conv2D('conv-pi', h, out_channel=512, kernel_shape=7, stride=1, padding=padding)
+                    pi_l = symbf.batch_flatten(pi_l)            
+                else:
+                    q_l = FullyConnected('fc0-q', h, 512, nl=LeakyReLU)
+                    pi_l = FullyConnected('fc0-pi', h, 512, nl=LeakyReLU)
+
 
                 if USE_RNN:
                     # q
+                    if SINGLE_RNN:
+                        q_l = tf.multiply(q_l, pi_l)
                     q_l = tf.reshape(q_l, [self.batch_size, self.channel, 512])
                     q_l, q_rnn_state_out = tf.nn.dynamic_rnn(inputs=q_l, 
                                 cell=get_rnn_cell(), 
-                                initial_state=self.get_rnn_init_state(),
+                                initial_state=self.get_rnn_init_state('q'),
                                 dtype=tf.float32, scope='rnn-q')
                     q_l = q_l[:, -1, :]
                     # pi
                     pi_l = tf.reshape(pi_l, [self.batch_size, self.channel, 512])
                     pi_l, pi_rnn_state_out = tf.nn.dynamic_rnn(inputs=pi_l, 
                                 cell=get_rnn_cell(),
-                                initial_state=self.get_rnn_init_state(),
+                                initial_state=self.get_rnn_init_state('pi'),
                                 dtype=tf.float32, scope='rnn-pi')
                     pi_l = pi_l[:, -1, :]
+            
 
         pi_y = FullyConnected('fc-pi-t', pi_l, self.num_actions, nl=tf.identity)
         
-        l = tf.multiply(q_l, pi_l)
+        if SINGLE_RNN:
+            l = q_l
+        else:
+            l = tf.multiply(q_l, pi_l)
         
         if self.method != 'Dueling':
             Q = FullyConnected('fct', l, self.num_actions, nl=tf.identity)
@@ -201,6 +222,8 @@ if __name__ == '__main__':
     parser.add_argument('--lamb', help='lamb', type=float, required=True)
     parser.add_argument('--rnn', help='use_rnn', type=str, required=True)
     parser.add_argument('--keep_state', help='keep state', type=int, default=0)
+    parser.add_argument('--no_fc', help='no fc', type=int, default=0)
+    parser.add_argument('--single_rnn', help='single rnn', type=int, default=0)
     args = parser.parse_args()
 
     if args.gpu:
@@ -215,10 +238,12 @@ if __name__ == '__main__':
     AI_SKIP = args.ai_skip
     LAMB = args.lamb
     USE_RNN = bool(int(args.rnn))
+    SINGLE_RNN = bool(args.single_rnn)
     RNN_CELL = args.cell
     KEEP_STATE = bool(args.keep_state)
+    NO_FC = bool(args.no_fc)
 
-    logger.info('USE_RNN = {}'.format(USE_RNN))
+    logger.info('USE_RNN = {}, NO_FC = {}, SINGLE_RNN = {}'.format(USE_RNN, NO_FC, SINGLE_RNN))
 
     if KEEP_STATE:
         assert USE_RNN, 'CNN model not compatiable with keep_state'
@@ -231,7 +256,7 @@ if __name__ == '__main__':
         output_names=['Qvalue']
 
     if USE_RNN:
-        MODEL_NAME = '%s-RPI-keep-%s-%s' % (args.algo, KEEP_STATE, RNN_CELL)
+        MODEL_NAME = '%s-RPI-keep-%s-nofc-%s-single-%s-%s' % (args.algo, KEEP_STATE, NO_FC, SINGLE_RNN, RNN_CELL)
     else:
         MODEL_NAME = '%s-PI' % (args.algo)
 
