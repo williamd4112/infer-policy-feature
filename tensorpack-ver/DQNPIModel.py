@@ -15,7 +15,7 @@ from tensorpack.tfutils import symbolic_functions as symbf
 
 
 class Model(ModelDesc):
-    def __init__(self, image_shape, channel, method, num_actions, gamma, lr=1e-3, lamb=1.0, keep_state=False):
+    def __init__(self, image_shape, channel, method, num_actions, gamma, lr=1e-3, lamb=1.0, keep_state=False, h_size=512):
         self.image_shape = image_shape
         self.channel = channel
         self.method = method
@@ -24,7 +24,7 @@ class Model(ModelDesc):
         self.lr = lr
         self.lamb = lamb
         self.keep_state = keep_state
-        self.h_size = 512
+        self.h_size = h_size
 
     def _get_inputs(self):
         # Use a combined state for efficiency.

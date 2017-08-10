@@ -87,7 +87,7 @@ class AugmentExpReplay(ExpReplay, Callback):
                  batch_size,
                  memory_size, init_memory_size,
                  init_exploration,
-                 update_frequency, history_len):
+                 update_frequency, history_len, h_size=512):
         """
         Args:
             predictor_io_names (tuple of list of str): input/output names to

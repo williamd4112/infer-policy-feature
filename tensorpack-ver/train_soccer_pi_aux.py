@@ -53,6 +53,7 @@ USE_RNN = False
 RNN_CELL = None
 NO_FC = False
 SINGLE_RNN = False
+RNN_HIDDEN = 512
 
 def get_player(viz=False, train=False):
     pl = SoccerPlayer(image_shape=IMAGE_SIZE[::-1], viz=viz, frame_skip=ACTION_REPEAT, field=FIELD, ai_frame_skip=AI_SKIP)
@@ -68,15 +69,15 @@ def get_player(viz=False, train=False):
 
 def get_rnn_cell():
     if RNN_CELL == 'gru':
-        return tf.nn.rnn_cell.GRUCell(num_units=512)
+        return tf.nn.rnn_cell.GRUCell(num_units=RNN_HIDDEN)
     elif RNN_CELL == 'lstm':
-        return tf.nn.rnn_cell.LSTMCell(num_units=512, state_is_tuple=True)
+        return tf.nn.rnn_cell.LSTMCell(num_units=RNN_HIDDEN, state_is_tuple=True)
     else:
         assert 0
 
 class Model(DQNModel):
     def __init__(self):
-        super(Model, self).__init__(IMAGE_SIZE, FRAME_HISTORY, METHOD, NUM_ACTIONS, GAMMA, LR, LAMB, KEEP_STATE)
+        super(Model, self).__init__(IMAGE_SIZE, FRAME_HISTORY, METHOD, NUM_ACTIONS, GAMMA, LR, LAMB, KEEP_STATE, RNN_HIDDEN)
     
     def get_rnn_init_state(self, name):
         if self.keep_state:
@@ -178,7 +179,8 @@ def get_config():
         init_memory_size=INIT_MEMORY_SIZE,
         init_exploration=1.0,
         update_frequency=UPDATE_FREQ,
-        history_len=FRAME_HISTORY
+        history_len=FRAME_HISTORY,
+        h_size=RNN_HIDDEN
     )
 
     return TrainConfig(
@@ -209,6 +211,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--gpu', help='comma separated list of GPU(s) to use.')
     parser.add_argument('--load', help='load model')
+    parser.add_argument('--log', help='train log dir', default='train_log')
     parser.add_argument('--task', help='task to perform',
                         choices=['play', 'eval', 'train'], default='train')
     parser.add_argument('--algo', help='algorithm',
@@ -226,6 +229,7 @@ if __name__ == '__main__':
     parser.add_argument('--keep_state', help='keep state', type=int, default=0)
     parser.add_argument('--no_fc', help='no fc', type=int, default=0)
     parser.add_argument('--single_rnn', help='single rnn', type=int, default=0)
+    parser.add_argument('--rnn_h', help='rnn hidden', type=int, required=True)
     args = parser.parse_args()
 
     if args.gpu:
@@ -244,8 +248,10 @@ if __name__ == '__main__':
     RNN_CELL = args.cell
     KEEP_STATE = bool(args.keep_state)
     NO_FC = bool(args.no_fc)
+    RNN_HIDDEN = args.rnn_h
+    train_logdir = args.log    
 
-    logger.info('USE_RNN = {}, NO_FC = {}, SINGLE_RNN = {}'.format(USE_RNN, NO_FC, SINGLE_RNN))
+    logger.info('USE_RNN = {}, NO_FC = {}, SINGLE_RNN = {}, RNN_HIDDEN = {}'.format(USE_RNN, NO_FC, SINGLE_RNN, RNN_HIDDEN))
 
     if KEEP_STATE:
         assert USE_RNN, 'CNN model not compatiable with keep_state'
@@ -258,7 +264,7 @@ if __name__ == '__main__':
         output_names=['Qvalue']
 
     if USE_RNN:
-        MODEL_NAME = '%s-RPI-keep-%s-nofc-%s-single-%s-%s' % (args.algo, KEEP_STATE, NO_FC, SINGLE_RNN, RNN_CELL)
+        MODEL_NAME = '%s-RPI-%d-keep-%s-nofc-%s-single-%s-%s' % (args.algo, RNN_HIDDEN, KEEP_STATE, NO_FC, SINGLE_RNN, RNN_CELL)
     else:
         MODEL_NAME = '%s-PI' % (args.algo)
 
@@ -278,7 +284,7 @@ if __name__ == '__main__':
             eval_model_multithread(cfg, EVAL_EPISODE, get_player)
     else:
         logger.set_logger_dir(
-            os.path.join('train_log', '{}-aux-field-{}-skip-{}-ai_skip-{}-hist-{}-batch-{}-lr-{}-lamb-{}-{}'.format(
+            os.path.join(train_logdir, '{}-aux-field-{}-skip-{}-ai_skip-{}-hist-{}-batch-{}-lr-{}-lamb-{}-{}'.format(
                 MODEL_NAME, args.field, args.skip, args.ai_skip, args.hist_len, args.batch_size, args.lr, args.lamb, os.path.basename('soccer').split('.')[0])))
         config = get_config()
         if args.load:

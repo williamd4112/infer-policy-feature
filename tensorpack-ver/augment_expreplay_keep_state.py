@@ -87,7 +87,7 @@ class AugmentExpReplay(ExpReplay, Callback):
                  batch_size,
                  memory_size, init_memory_size,
                  init_exploration,
-                 update_frequency, history_len):
+                 update_frequency, history_len, h_size):
         """
         Args:
             predictor_io_names (tuple of list of str): input/output names to
@@ -107,9 +107,10 @@ class AugmentExpReplay(ExpReplay, Callback):
                 init_exploration,
                 update_frequency,
                 history_len)
+        self.h_size = h_size
         self.mem = AugmentReplayMemory(memory_size, state_shape, history_len)
-        self.q_rnn_state = np.zeros([2, 512], dtype=np.float32)
-        self.pi_rnn_state = np.zeros([2, 512], dtype=np.float32)
+        self.q_rnn_state = np.zeros([2, self.h_size], dtype=np.float32)
+        self.pi_rnn_state = np.zeros([2, self.h_size], dtype=np.float32)
 
     def _populate_exp(self):
         """ populate a transition by epsilon-greedy"""
@@ -148,8 +149,8 @@ class AugmentExpReplay(ExpReplay, Callback):
         isOver = np.asarray([e[3] for e in batch_exp], dtype='bool')
         action_o = np.asarray([e[4] for e in batch_exp], dtype='int8')
         batch_size = len(state)
-        q_rnn_state = np.zeros([batch_size, 2, 512])
-        pi_rnn_state = np.zeros([batch_size, 2, 512])
+        q_rnn_state = np.zeros([batch_size, 2, self.h_size])
+        pi_rnn_state = np.zeros([batch_size, 2, self.h_size])
         return [state, action, reward, isOver, action_o, q_rnn_state, pi_rnn_state]
 
 if __name__ == '__main__':
