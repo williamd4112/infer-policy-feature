@@ -53,8 +53,10 @@ USE_RNN = False
 RNN_CELL = None
 NO_FC = False
 SINGLE_RNN = False
+FC_HIDDEN = 512
 RNN_HIDDEN = 512
 RNN_STEP = 1
+UPDATE_TARGET_STEP = 10000
 
 def get_player(viz=False, train=False):
     pl = SoccerPlayer(image_shape=IMAGE_SIZE[::-1], viz=viz, frame_skip=ACTION_REPEAT, field=FIELD, ai_frame_skip=AI_SKIP)
@@ -115,35 +117,35 @@ class Model(DQNModel):
                      .Conv2D('conv2', out_channel=64, kernel_shape=3)())                    
 
                 if NO_FC:
-                    q_l = Conv2D('conv-q', h, out_channel=512, kernel_shape=7, stride=1, padding=padding)
+                    q_l = Conv2D('conv-q', h, out_channel=FC_HIDDEN, kernel_shape=7, stride=1, padding=padding)
                     q_l = symbf.batch_flatten(q_l)
-                    pi_l = Conv2D('conv-pi', h, out_channel=512, kernel_shape=7, stride=1, padding=padding)
+                    pi_l = Conv2D('conv-pi', h, out_channel=FC_HIDDEN, kernel_shape=7, stride=1, padding=padding)
                     pi_l = symbf.batch_flatten(pi_l)            
                 else:
-                    q_l = FullyConnected('fc0-q', h, 512, nl=LeakyReLU)
-                    pi_l = FullyConnected('fc0-pi', h, 512, nl=LeakyReLU)
+                    q_l = FullyConnected('fc0-q', h, FC_HIDDEN, nl=LeakyReLU)
+                    pi_l = FullyConnected('fc0-pi', h, FC_HIDDEN, nl=LeakyReLU)
 
 
                 if USE_RNN:
                     # q
                     if SINGLE_RNN:
                         q_l = tf.multiply(q_l, pi_l)
-                    q_l = tf.reshape(q_l, [self.batch_size, self.channel, 512])
+                    q_l = tf.reshape(q_l, [self.batch_size, self.channel, FC_HIDDEN])
                     q_l, q_rnn_state_out = tf.nn.dynamic_rnn(inputs=q_l, 
                                 cell=get_rnn_cell(), 
                                 initial_state=self.get_rnn_init_state('q'),
                                 dtype=tf.float32, scope='rnn-q')
                     q_l = q_l[:, -RNN_STEP:, :]
-                    q_l = tf.reshape(q_l, (self.batch_size * RNN_STEP, 512))                    
+                    q_l = tf.reshape(q_l, (self.batch_size * RNN_STEP, FC_HIDDEN))                    
 
                     # pi
-                    pi_l = tf.reshape(pi_l, [self.batch_size, self.channel, 512])
+                    pi_l = tf.reshape(pi_l, [self.batch_size, self.channel, FC_HIDDEN])
                     pi_l, pi_rnn_state_out = tf.nn.dynamic_rnn(inputs=pi_l, 
                                 cell=get_rnn_cell(),
                                 initial_state=self.get_rnn_init_state('pi'),
                                 dtype=tf.float32, scope='rnn-pi')
                     pi_l = pi_l[:, -RNN_STEP:, :]
-                    pi_l = tf.reshape(pi_l, (self.batch_size * RNN_STEP, 512))                    
+                    pi_l = tf.reshape(pi_l, (self.batch_size * RNN_STEP, FC_HIDDEN))                    
 
         pi_y = FullyConnected('fc-pi-t', pi_l, self.num_actions, nl=tf.identity)
         
@@ -192,7 +194,7 @@ def get_config():
             ModelSaver(),
             PeriodicTrigger(
                 RunOp(DQNModel.update_target_param, verbose=True),
-                every_k_steps=10000 // UPDATE_FREQ),    # update target network every 10k steps
+                every_k_steps=UPDATE_TARGET_STEP // UPDATE_FREQ),    # update target network every 10k steps
             expreplay,
             ScheduledHyperParamSetter('learning_rate',
                                       [(600, 4e-4), (1000, 2e-4)]),
@@ -234,6 +236,8 @@ if __name__ == '__main__':
     parser.add_argument('--single_rnn', help='single rnn', type=int, default=0)
     parser.add_argument('--rnn_h', help='rnn hidden', type=int, required=True)
     parser.add_argument('--rnn_step', help='rnn update step', type=int, default=1)
+    parser.add_argument('--fc_h', help='fc hidden', type=int, required=True)
+    parser.add_argument('--update_target_step', help='target update step', type=int, default=10000)
     args = parser.parse_args()
 
     if args.gpu:
@@ -254,6 +258,8 @@ if __name__ == '__main__':
     NO_FC = bool(args.no_fc)
     RNN_HIDDEN = args.rnn_h
     RNN_STEP = args.rnn_step
+    FC_HIDDEN = args.fc_h
+    UPDATE_TARGET_STEP = args.update_target_step
     train_logdir = args.log    
 
     logger.info('USE_RNN = {}, NO_FC = {}, SINGLE_RNN = {}, RNN_HIDDEN = {}, RNN_STEP = {}'.format(USE_RNN, NO_FC, SINGLE_RNN, RNN_HIDDEN, RNN_STEP))
@@ -269,9 +275,9 @@ if __name__ == '__main__':
         output_names=['Qvalue']
 
     if USE_RNN:
-        MODEL_NAME = '%s-RPI-%d-step-%d-keep-%s-nofc-%s-single-%s-%s' % (args.algo, RNN_HIDDEN, RNN_STEP, KEEP_STATE, NO_FC, SINGLE_RNN, RNN_CELL)
+        MODEL_NAME = '%s-RPI-%d-%d-step-%d-keep-%s-nofc-%s-single-%s-%s' % (args.algo, FC_HIDDEN, RNN_HIDDEN, RNN_STEP, KEEP_STATE, NO_FC, SINGLE_RNN, RNN_CELL)
     else:
-        MODEL_NAME = '%s-PI' % (args.algo)
+        MODEL_NAME = '%s-PI-%d' % (args.algo, FC_HIDDEN)
 
     # set num_actions
     NUM_ACTIONS = SoccerPlayer().get_action_space().num_actions()
@@ -289,8 +295,8 @@ if __name__ == '__main__':
             eval_model_multithread(cfg, EVAL_EPISODE, get_player)
     else:
         logger.set_logger_dir(
-            os.path.join(train_logdir, '{}-aux-field-{}-skip-{}-ai_skip-{}-hist-{}-batch-{}-lr-{}-lamb-{}-{}'.format(
-                MODEL_NAME, args.field, args.skip, args.ai_skip, args.hist_len, args.batch_size, args.lr, args.lamb, os.path.basename('soccer').split('.')[0])))
+            os.path.join(train_logdir, '{}-aux-field-{}-skip-{}-ai_skip-{}-hist-{}-batch-{}-lr-{}-lamb-{}-update-{}-{}'.format(
+                MODEL_NAME, args.field, args.skip, args.ai_skip, args.hist_len, args.batch_size, args.lr, args.lamb, UPDATE_TARGET_STEP, os.path.basename('soccer').split('.')[0])))
         config = get_config()
         if args.load:
             config.session_init = SaverRestore(args.load)
