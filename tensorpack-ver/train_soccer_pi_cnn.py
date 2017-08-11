@@ -50,9 +50,10 @@ LR = 1e-3
 NUM_ACTIONS = None
 METHOD = None
 FIELD = None
+AI_SKIP = None
 
 def get_player(viz=False, train=False):
-    pl = SoccerPlayer(image_shape=IMAGE_SIZE[::-1], viz=viz, frame_skip=ACTION_REPEAT, field=FIELD)
+    pl = SoccerPlayer(image_shape=IMAGE_SIZE[::-1], viz=viz, frame_skip=ACTION_REPEAT, field=FIELD, ai_frame_skip=AI_SKIP)
     if not train:
         # create a new axis to stack history on
         pl = MapPlayerState(pl, lambda im: im[:, :, np.newaxis])
@@ -79,6 +80,7 @@ class Model(DQNModel):
                      # Nature architecture
                      .Conv2D('conv0', out_channel=32, kernel_shape=8, stride=4)
                      .Conv2D('conv1', out_channel=64, kernel_shape=4, stride=2)
+<<<<<<< HEAD
                      .Conv2D('conv2', out_channel=64, kernel_shape=3)
 
                      # architecture used for the figure in the README, slower but takes fewer iterations to converge
@@ -90,6 +92,9 @@ class Model(DQNModel):
                      # .MaxPooling('pool2', 2)
                      # .Conv2D('conv3', out_channel=64, kernel_shape=3)
 
+=======
+                     .Conv2D('conv2', out_channel=64, kernel_shape=3)                   
+>>>>>>> de1acc236dd066eca1a6baaf4cb5ee5f47a9b5ca
                      .FullyConnected('fc0', 512, nl=LeakyReLU)())
 
         with tf.variable_scope('pi'):
@@ -136,10 +141,17 @@ def get_config():
                 every_k_steps=10000 // UPDATE_FREQ),    # update target network every 10k steps
             expreplay,
             ScheduledHyperParamSetter('learning_rate',
+<<<<<<< HEAD
                                       [(20, 4e-4), (40, 2e-4)]),
             ScheduledHyperParamSetter(
                 ObjAttrParam(expreplay, 'exploration'),
                 [(0, 1), (40, 0.1), (80, 0.01)],   # 1->0.1 in the first million steps
+=======
+                                      [(200, 4e-4), (400, 2e-4)]),
+            ScheduledHyperParamSetter(
+                ObjAttrParam(expreplay, 'exploration'),
+                [(0, 1), (400, 0.1), (800, 0.01)],   # 1->0.1 in the first million steps
+>>>>>>> de1acc236dd066eca1a6baaf4cb5ee5f47a9b5ca
                 interp='linear'),
             HumanHyperParamSetter('learning_rate'),
         ],
@@ -160,6 +172,7 @@ if __name__ == '__main__':
     parser.add_argument('--algo', help='algorithm',
                         choices=['DQN', 'Double', 'Dueling'], default='DQN')
     parser.add_argument('--skip', help='act repeat', type=int, required=True)
+    parser.add_argument('--ai_skip', help='ai act repeat', type=int, required=True)
     parser.add_argument('--field', help='field type', type=str, choices=['small', 'large'], required=True)
     parser.add_argument('--hist_len', help='hist len', type=int, required=True)
     parser.add_argument('--batch_size', help='batch size', type=int, required=True)
@@ -175,7 +188,11 @@ if __name__ == '__main__':
     FIELD = args.field
     FRAME_HISTORY = args.hist_len
     BATCH_SIZE = args.batch_size
+<<<<<<< HEAD
     LAMB = args.lamb
+=======
+    AI_SKIP = args.ai_skip    
+>>>>>>> de1acc236dd066eca1a6baaf4cb5ee5f47a9b5ca
 
     # set num_actions
     NUM_ACTIONS = SoccerPlayer().get_action_space().num_actions()
@@ -193,8 +210,8 @@ if __name__ == '__main__':
             eval_model_multithread(cfg, EVAL_EPISODE, get_player)
     else:
         logger.set_logger_dir(
-            os.path.join('train_log', 'DQNPI-field-{}-skip-{}-hist-{}-batch-{}-{}'.format(
-                args.field, args.skip, args.hist_len, args.batch_size, os.path.basename('soccer').split('.')[0])))
+            os.path.join('train_log', 'DQNPI-field-{}-skip-{}-ai_skip-{}-hist-{}-batch-{}-lr-0.001-lamb-1.0-{}'.format(
+                args.field, args.skip, args.ai_skip, args.hist_len, args.batch_size, os.path.basename('soccer').split('.')[0])))
         config = get_config()
         if args.load:
             config.session_init = SaverRestore(args.load)

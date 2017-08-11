@@ -26,7 +26,7 @@ AugmentExperience = namedtuple('AugmentExperience',
 class AugmentReplayMemory(ReplayMemory):
     def __init__(self, max_size, state_shape, history_len):
         super(AugmentReplayMemory, self).__init__(max_size, state_shape, history_len)
-        self.action_o = np.zeros((self.max_size,), dtype='int32')
+        self.action_o = np.zeros((self.max_size, 3), dtype='int32')
 
     def sample(self, idx):
         """ return a tuple of (s,r,a,o,a_o),
@@ -87,7 +87,7 @@ class AugmentExpReplay(ExpReplay, Callback):
                  batch_size,
                  memory_size, init_memory_size,
                  init_exploration,
-                 update_frequency, history_len, h_size=512):
+                 update_frequency, history_len):
         """
         Args:
             predictor_io_names (tuple of list of str): input/output names to
@@ -124,8 +124,9 @@ class AugmentExpReplay(ExpReplay, Callback):
             q_values = self.predictor([[history]])[0][0]  # this is the bottleneck
             act = np.argmax(q_values)
         reward, isOver = self.player.action(act)
+
         # NOTE: since modify action interface will destroy the proxy design
-        action_o = self.player.get_internal_state()['opponent_action']
+        action_o = self.player.get_internal_state()['agent_actions'][1:]
         self.mem.append(AugmentExperience(old_s, act, reward, isOver, action_o))
 
     def _process_batch(self, batch_exp):
@@ -142,7 +143,7 @@ if __name__ == '__main__':
     def predictor(x):
         np.array([1, 1, 1, 1])
     
-    from soccer_env import SoccerPlayer 
+    from soccer_env_multitask import SoccerPlayer 
 
     player = SoccerPlayer(image_shape=(84, 84), viz=False, frame_skip=4)
 

@@ -36,36 +36,37 @@ class SoccerPlayer(RLEnvironment):
 
     def __init__(self, viz=0, 
                 height_range=(None, None), 
-                field=None, partial=False, radius=2,
+                field='large', partial=False, radius=2,
                 frame_skip=4, 
                 image_shape=(84, 84), 
-                nullop_start=30, mode=None, team_size=1, ai_frame_skip=1):
+                nullop_start=30, mode=None, team_size=2, ai_frame_skip=1):
         super(SoccerPlayer, self).__init__()
         self.mode = mode
         self.field = field
         self.partial = partial
         self.viz = viz
+
+        assert mode == None, 'Not impl'
+        assert field == 'large', 'No small 2vs2'
+
         if self.viz:
             self.renderer_options = soccer_renderer.RendererOptions(
                 show_display=True, max_fps=10, enable_key_events=True)
         else:
             self.renderer_options = None
 
-        if self.field == 'large' :
-            map_path = file_util.resolve_path(__file__, 'data/map/soccer_large.tmx')
-        else :
-            map_path = None
+        map_path = file_util.resolve_path(__file__, 'data/map/soccer_large.tmx')
 
-        self.env_options = soccer_environment.SoccerEnvironmentOptions(team_size=1, map_path=map_path, ai_frame_skip=ai_frame_skip)
+        self.team_size = team_size
+        self.env_options = soccer_environment.SoccerEnvironmentOptions(team_size=self.team_size, map_path=map_path, ai_frame_skip=ai_frame_skip)
         self.env = soccer_environment.SoccerEnvironment(env_options=self.env_options, renderer_options=self.renderer_options)
 
         self.computer_team_name = self.env.team_names[1]
-        self.computer_agent_index = self.env.get_agent_index(self.computer_team_name, 0)
-        
+        self.player_team_name = self.env.team_names[0]
+
         # Partial
         if self.partial:
             self.radius = radius
-            self.player_team_name = self.env.team_names[0]
             self.player_agent_index = self.env.get_agent_index(self.player_team_name, 0)
  
         self.width, self.height = self.SOCCER_WIDTH, self.SOCCER_HEIGHT
@@ -77,12 +78,23 @@ class SoccerPlayer(RLEnvironment):
         self.image_shape = image_shape
         
         self.last_info = {}
-        opponent_act = self.env.state.get_agent_action(self.computer_agent_index)
-        self.last_info['opponent_action'] = self.env.actions.index(opponent_act if opponent_act else 'STAND')
+        self.agent_actions = ['STAND'] * (self.team_size * 2)
 
-    
         self.current_episode_score = StatCounter()
         self.restart_episode()
+
+    def _get_computer_actions(self):
+        # Collaborator
+        for i in range(self.team_size):
+            index = self.env.get_agent_index(self.player_team_name, i)
+            action = self.env.state.get_agent_action(index)
+            self.agent_actions[self.team_size * 0 + i] = action
+        # Opponent
+        for i in range(self.team_size):
+            index = self.env.get_agent_index(self.computer_team_name, i)
+            action = self.env.state.get_agent_action(index)
+            self.agent_actions[self.team_size * 1 + i] = action
+        return np.asarray([self.env.actions.index(act if act else 'STAND') for act in self.agent_actions])
 
     def _grab_raw_image(self):
         """
@@ -117,16 +129,12 @@ class SoccerPlayer(RLEnvironment):
     def get_action_space(self):
         return DiscreteActionSpace(len(self.actions))
 
-
     def finish_episode(self):
         self.stats['score'].append(self.current_episode_score.sum)
 
     def restart_episode(self):
         self.current_episode_score.reset()
         self.env.reset()
-        if self.mode in ['OFFENSIVE', 'DEFENSIVE']:
-            self.env.state.set_agent_mode(self.computer_agent_index, self.mode)
- 
         self.last_raw_screen = self._grab_raw_image()
 
     def action(self, act):
@@ -135,22 +143,15 @@ class SoccerPlayer(RLEnvironment):
         :returns: (reward, isOver)
         """
         r = 0
-        info = {}
         for k in range(self.frame_skip):
             if k == self.frame_skip - 1:
                 self.last_raw_screen = self._grab_raw_image()
             ret = self.env.take_action(self.env.actions[act])
             if k == 0:
-                opponent_act = self.env.state.get_agent_action(self.computer_agent_index)
-                info['opponent_action'] = self.env.actions.index(opponent_act if opponent_act else 'STAND')
-        
+                self.last_info['agent_actions'] = self._get_computer_actions()     
             r += ret.reward
             if self.env.state.is_terminal():
                 break
-        self.last_info = info
-        if self.mode == 'RANDOM':
-            modes = ['OFFENSIVE', 'DEFENSIVE']
-            self.env.state.set_agent_mode(self.computer_agent_index, random.choice(modes))
 
         self.current_episode_score.feed(r)
         isOver = self.env.state.is_terminal()
@@ -161,15 +162,4 @@ class SoccerPlayer(RLEnvironment):
 
     def get_internal_state(self):
         return self.last_info
-
-class SoccerPlayerWithInternalState(SoccerPlayer):
-    def current_state(self):
-        img = self._grab_raw_image()
-        img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-        img = cv2.resize(img, self.image_shape)
-        
-        # Last action (a_t_1)
-        act = self.get_internal_state()['opponent_action']
-
-        return (ret.astype('uint8'), act)  # to save some memory
      

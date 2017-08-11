@@ -45,9 +45,11 @@ EVAL_EPISODE = 50
 NUM_ACTIONS = None
 METHOD = None
 FIELD = 'large'
+LR = None
+AI_SKIP = None
 
 def get_player(viz=False, train=False):
-    pl = SoccerPlayer(image_shape=IMAGE_SIZE[::-1], viz=viz, frame_skip=ACTION_REPEAT, field=FIELD)
+    pl = SoccerPlayer(image_shape=IMAGE_SIZE[::-1], viz=viz, frame_skip=ACTION_REPEAT, field=FIELD, ai_frame_skip=AI_SKIP)
     if not train:
         # create a new axis to stack history on
         pl = MapPlayerState(pl, lambda im: im[:, :, np.newaxis])
@@ -61,7 +63,7 @@ def get_player(viz=False, train=False):
 
 class Model(DQNModel):
     def __init__(self):
-        super(Model, self).__init__(IMAGE_SIZE, FRAME_HISTORY, METHOD, NUM_ACTIONS, GAMMA)
+        super(Model, self).__init__(IMAGE_SIZE, FRAME_HISTORY, METHOD, NUM_ACTIONS, GAMMA, LR)
 
     def _get_DQN_prediction(self, image):
         """ image: [0,255]"""
@@ -127,7 +129,7 @@ def get_config():
         ],
         model=M,
         steps_per_epoch=STEPS_PER_EPOCH,
-        max_epoch=1000,
+        max_epoch=10000,
         # run the simulator on a separate GPU if available
         predict_tower=[1] if get_nr_gpu() > 1 else [0],
     )
@@ -145,8 +147,8 @@ if __name__ == '__main__':
     parser.add_argument('--field', help='field type', type=str, choices=['small', 'large'], required=True)
     parser.add_argument('--hist_len', help='hist len', type=int, required=True)
     parser.add_argument('--batch_size', help='batch size', type=int, required=True)
-    parser.add_argument('--lr', help='lr', type=float, default=1e-3)
-
+    parser.add_argument('--lr', help='lr', type=float, required=True)
+    parser.add_argument('--ai_skip', help='ai act repeat', type=int, required=True)
     args = parser.parse_args()
 
     if args.gpu:
@@ -158,6 +160,7 @@ if __name__ == '__main__':
     FRAME_HISTORY = args.hist_len
     BATCH_SIZE = args.batch_size
     LR = args.lr
+    AI_SKIP = args.ai_skip
 
     # set num_actions
     NUM_ACTIONS = SoccerPlayer().get_action_space().num_actions()
@@ -175,8 +178,8 @@ if __name__ == '__main__':
             eval_model_multithread(cfg, EVAL_EPISODE, get_player)
     else:
         logger.set_logger_dir(
-            os.path.join('train_log', 'DQN-{}'.format(
-                os.path.basename('soccer').split('.')[0])))
+            os.path.join('train_log', '{}-skip-{}-ai_skip-{}-field-{}-hist-{}-batch-{}-lr-{}-{}'.format(
+                args.algo, args.skip, args.ai_skip, args.field, args.hist_len, args.batch_size, args.lr, os.path.basename('soccer').split('.')[0])))
         config = get_config()
         if args.load:
             config.session_init = SaverRestore(args.load)

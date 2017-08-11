@@ -13,12 +13,13 @@ from tensorpack.tfutils import symbolic_functions as symbf
 
 
 class Model(ModelDesc):
-    def __init__(self, image_shape, channel, method, num_actions, gamma):
+    def __init__(self, image_shape, channel, method, num_actions, gamma, lr=1e-3):
         self.image_shape = image_shape
         self.channel = channel
         self.method = method
         self.num_actions = num_actions
         self.gamma = gamma
+        self.lr = lr
 
     def _get_inputs(self):
         # Use a combined state for efficiency.
@@ -78,7 +79,7 @@ class Model(ModelDesc):
 
     def _get_optimizer(self):
         lr = symbf.get_scalar_var('learning_rate', 1e-3, summary=True)
-        opt = tf.train.AdamOptimizer(lr, epsilon=1e-3)
+        opt = tf.train.AdamOptimizer(self.lr, epsilon=1e-3)
         return optimizer.apply_grad_processors(
             opt, [gradproc.GlobalNormClip(10), gradproc.SummaryGradient()])
 

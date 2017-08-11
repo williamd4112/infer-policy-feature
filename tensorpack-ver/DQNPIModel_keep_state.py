@@ -15,13 +15,15 @@ from tensorpack.tfutils import symbolic_functions as symbf
 
 
 class Model(ModelDesc):
-    def __init__(self, image_shape, channel, method, num_actions, gamma):
+    def __init__(self, image_shape, channel, method, num_actions, gamma, lr=1e-3, lamb=1.0):
         self.image_shape = image_shape
         self.channel = channel
         self.method = method
         self.num_actions = num_actions
         self.gamma = gamma
         self.h_size = 512
+        self.lr = lr
+        self.lamb = lamb
 
     def _get_inputs(self):
         # Use a combined state for efficiency.
@@ -82,7 +84,7 @@ class Model(ModelDesc):
         
         q_cost = (symbf.huber_loss(target - pred_action_value))
         pi_cost = (tf.nn.softmax_cross_entropy_with_logits(labels=action_o_one_hot, logits=pi_value))
-        self.cost = tf.reduce_mean(q_cost + pi_cost)
+        self.cost = tf.reduce_mean(q_cost + self.lamb * pi_cost)
 
         summary.add_param_summary(('conv.*/W', ['histogram', 'rms']),
                                   ('fc.*/W', ['histogram', 'rms']))   # monitor all W
@@ -90,7 +92,7 @@ class Model(ModelDesc):
 
 
     def _get_optimizer(self):
-        lr = symbf.get_scalar_var('learning_rate', 1e-3, summary=True)
+        lr = symbf.get_scalar_var('learning_rate', self.lr, summary=True)
         opt = tf.train.AdamOptimizer(lr, epsilon=1e-3)
         return optimizer.apply_grad_processors(
             opt, [gradproc.GlobalNormClip(10), gradproc.SummaryGradient()])

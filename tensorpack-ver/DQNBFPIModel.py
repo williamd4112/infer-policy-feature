@@ -34,8 +34,7 @@ class Model(ModelDesc):
                 InputDesc(tf.int64, (None,), 'action'),
                 InputDesc(tf.float32, (None,), 'reward'),
                 InputDesc(tf.bool, (None,), 'isOver'),
-                InputDesc(tf.int64, (None, self.channel + 1), 'comb_action_o'),
-                InputDesc(tf.int64, (None,), 'old_action_o')]
+                InputDesc(tf.int64, (None, self.channel + 1), 'comb_action_o'),]
 
     @abc.abstractmethod
     def _get_DQN_prediction(self, image):
@@ -43,7 +42,7 @@ class Model(ModelDesc):
 
     def _build_graph(self, inputs):
 
-        comb_state, action, reward, isOver, comb_action_o, wtfman = inputs
+        comb_state, action, reward, isOver, comb_action_o = inputs
         comb_state = tf.cast(comb_state, tf.float32)
         self.batch_size = tf.shape(comb_state)[0]
         reshape_size = (self.batch_size * self.channel,)
