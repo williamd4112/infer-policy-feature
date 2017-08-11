@@ -63,10 +63,11 @@ class Model(ModelDesc):
             comb_state, action, reward, isOver, action_o = inputs
         self.batch_size = tf.shape(comb_state)[0]
 
-        action = tf.slice(action, [0, 0], [-1, self.update_step])
-        reward = tf.slice(reward, [0, 0], [-1, self.update_step])
-        isOver = tf.slice(isOver, [0, 0], [-1, self.update_step])
-        action_o = tf.slice(action_o, [0, 0, 0], [-1, self.update_step, self.num_agents])
+        backward_offset = ((self.channel + 1) - self.update_step)
+        action = tf.slice(action, [0, backward_offset], [-1, self.update_step])
+        reward = tf.slice(reward, [0, backward_offset], [-1, self.update_step])
+        isOver = tf.slice(isOver, [0, backward_offset], [-1, self.update_step])
+        action_o = tf.slice(action_o, [0, backward_offset, 0], [-1, self.update_step, self.num_agents])
 
         action = tf.reshape(action, (self.batch_size * self.update_step,))
         reward = tf.reshape(reward, (self.batch_size * self.update_step,))
