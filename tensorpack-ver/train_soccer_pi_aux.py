@@ -26,7 +26,7 @@ from DQNPIModel import Model as DQNModel
 import common
 from common import play_model, Evaluator, eval_model_multithread
 from soccer_env import SoccerPlayer
-
+from augment_expreplay import AugmentExpReplay
 from tensorpack.tfutils import symbolic_functions as symbf
 
 BATCH_SIZE = None
@@ -57,6 +57,7 @@ FC_HIDDEN = 512
 RNN_HIDDEN = 512
 RNN_STEP = 1
 UPDATE_TARGET_STEP = 10000
+MULTI_TASK = False
 
 def get_player(viz=False, train=False):
     pl = SoccerPlayer(image_shape=IMAGE_SIZE[::-1], viz=viz, frame_skip=ACTION_REPEAT, field=FIELD, ai_frame_skip=AI_SKIP)
@@ -80,7 +81,8 @@ def get_rnn_cell():
 
 class Model(DQNModel):
     def __init__(self):
-        super(Model, self).__init__(IMAGE_SIZE, FRAME_HISTORY, METHOD, NUM_ACTIONS, GAMMA, LR, LAMB, KEEP_STATE, RNN_HIDDEN, RNN_STEP)
+        super(Model, self).__init__(IMAGE_SIZE, FRAME_HISTORY, METHOD, 
+            NUM_ACTIONS, GAMMA, LR, LAMB, KEEP_STATE, RNN_HIDDEN, RNN_STEP, MULTI_TASK, 3 if MULTI_TASK else 1)
     
     def get_rnn_init_state(self, name):
         if self.keep_state:
@@ -146,8 +148,10 @@ class Model(DQNModel):
                                 dtype=tf.float32, scope='rnn-pi')
                     pi_l = pi_l[:, -RNN_STEP:, :]
                     pi_l = tf.reshape(pi_l, (self.batch_size * RNN_STEP, FC_HIDDEN))                    
-
-        pi_y = FullyConnected('fc-pi-t', pi_l, self.num_actions, nl=tf.identity)
+        
+        pi_ys = []
+        for i in range(self.num_agents):
+            pi_ys.append(FullyConnected('fct-%d' % i, pi_l, self.num_actions, nl=tf.identity))
         
         if SINGLE_RNN:
             l = q_l
@@ -162,11 +166,13 @@ class Model(DQNModel):
             As = FullyConnected('fctA', l, self.num_actions, nl=tf.identity)
             Q = tf.add(As, V - tf.reduce_mean(As, 1, keep_dims=True))
 
+        pi_values = [ tf.identity(pi_ys[i], name='Pivalue-%d' % i) for i in range(self.num_agents) ]
+
         if self.keep_state:
-            return tf.identity(Q, name='Qvalue'), tf.identity(pi_y, name='Pivalue'), \
+            return tf.identity(Q, name='Qvalue'), pi_values, \
                 tf.identity(q_rnn_state_out, name='q_rnn_state_out'), tf.identity(pi_rnn_state_out, name='pi_rnn_state_out')
         else:
-            return tf.identity(Q, name='Qvalue'), tf.identity(pi_y, name='Pivalue'), None, None
+            return tf.identity(Q, name='Qvalue'), pi_values, None, None
 
 def get_config():
     if KEEP_STATE:
@@ -185,7 +191,9 @@ def get_config():
         init_exploration=1.0,
         update_frequency=UPDATE_FREQ,
         history_len=FRAME_HISTORY,
-        h_size=RNN_HIDDEN
+        h_size=RNN_HIDDEN,
+        keep_state=KEEP_STATE,
+        num_agents=(3 if MULTI_TASK else 1)
     )
 
     return TrainConfig(
@@ -223,6 +231,7 @@ if __name__ == '__main__':
                         choices=['DQN', 'Double', 'Dueling'], default='DQN')
     parser.add_argument('--cell', help='cell',
                         choices=['gru', 'lstm', None], default=None)
+    parser.add_argument('--mt', help='2vs2', type=int, required=True)
     parser.add_argument('--skip', help='act repeat', type=int, required=True)
     parser.add_argument('--ai_skip', help='ai act repeat', type=int, required=True)
     parser.add_argument('--field', help='field type', type=str, choices=['small', 'large'], required=True)
@@ -234,9 +243,9 @@ if __name__ == '__main__':
     parser.add_argument('--keep_state', help='keep state', type=int, default=0)
     parser.add_argument('--no_fc', help='no fc', type=int, default=0)
     parser.add_argument('--single_rnn', help='single rnn', type=int, default=0)
-    parser.add_argument('--rnn_h', help='rnn hidden', type=int, required=True)
+    parser.add_argument('--rnn_h', help='rnn hidden', type=int, default=512)
     parser.add_argument('--rnn_step', help='rnn update step', type=int, default=1)
-    parser.add_argument('--fc_h', help='fc hidden', type=int, required=True)
+    parser.add_argument('--fc_h', help='fc hidden', type=int, default=512)
     parser.add_argument('--update_target_step', help='target update step', type=int, default=10000)
     args = parser.parse_args()
 
@@ -251,6 +260,7 @@ if __name__ == '__main__':
     LR = args.lr
     AI_SKIP = args.ai_skip
     LAMB = args.lamb
+    MULTI_TASK = bool(args.mt)
     USE_RNN = bool(int(args.rnn))
     SINGLE_RNN = bool(args.single_rnn)
     RNN_CELL = args.cell
@@ -266,18 +276,17 @@ if __name__ == '__main__':
 
     if KEEP_STATE:
         assert USE_RNN, 'CNN model not compatiable with keep_state'
-        from augment_expreplay_keep_state import AugmentExpReplay
         input_names = ['state', 'q_rnn_state_in', 'pi_rnn_state_in']
         output_names = ['Qvalue', 'q_rnn_state_out', 'pi_rnn_state_out']
     else:
-        from augment_expreplay import AugmentExpReplay
         input_names=['state']
         output_names=['Qvalue']
 
+    scenario = 'MT' if MULTI_TASK else 'ST'
     if USE_RNN:
-        MODEL_NAME = '%s-RPI-%d-%d-step-%d-keep-%s-nofc-%s-single-%s-%s' % (args.algo, FC_HIDDEN, RNN_HIDDEN, RNN_STEP, KEEP_STATE, NO_FC, SINGLE_RNN, RNN_CELL)
+        MODEL_NAME = '%s-%s-RPI-%d-%d-step-%d-keep-%s-nofc-%s-single-%s-%s' % (scenario, args.algo, FC_HIDDEN, RNN_HIDDEN, RNN_STEP, KEEP_STATE, NO_FC, SINGLE_RNN, RNN_CELL)
     else:
-        MODEL_NAME = '%s-PI-%d' % (args.algo, FC_HIDDEN)
+        MODEL_NAME = '%s-%s-PI-%d' % (scenario, args.algo, FC_HIDDEN)
 
     # set num_actions
     NUM_ACTIONS = SoccerPlayer().get_action_space().num_actions()

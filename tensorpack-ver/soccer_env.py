@@ -35,11 +35,10 @@ class SoccerPlayer(RLEnvironment):
     SOCCER_HEIGHT = 192
 
     def __init__(self, viz=0, 
-                height_range=(None, None), 
                 field=None, partial=False, radius=2,
                 frame_skip=4, 
                 image_shape=(84, 84), 
-                nullop_start=30, mode=None, team_size=1, ai_frame_skip=1):
+                mode=None, team_size=1, ai_frame_skip=1):
         super(SoccerPlayer, self).__init__()
         self.mode = mode
         self.field = field
@@ -56,38 +55,29 @@ class SoccerPlayer(RLEnvironment):
         else :
             map_path = None
 
-        self.env_options = soccer_environment.SoccerEnvironmentOptions(team_size=1, map_path=map_path, ai_frame_skip=ai_frame_skip)
+        self.team_size = team_size
+        self.env_options = soccer_environment.SoccerEnvironmentOptions(team_size=self.team_size, map_path=map_path, ai_frame_skip=ai_frame_skip)
         self.env = soccer_environment.SoccerEnvironment(env_options=self.env_options, renderer_options=self.renderer_options)
 
         self.computer_team_name = self.env.team_names[1]
-        self.computer_agent_index = self.env.get_agent_index(self.computer_team_name, 0)
-        
+        self.player_team_name = self.env.team_names[0]
+
         # Partial
         if self.partial:
             self.radius = radius
-            self.player_team_name = self.env.team_names[0]
             self.player_agent_index = self.env.get_agent_index(self.player_team_name, 0)
  
-        self.width, self.height = self.SOCCER_WIDTH, self.SOCCER_HEIGHT
         self.actions = self.env.actions
-
         self.frame_skip = frame_skip
-        self.nullop_start = nullop_start
-        self.height_range = height_range
         self.image_shape = image_shape
         
         self.last_info = {}
-        opponent_act = self.env.state.get_agent_action(self.computer_agent_index)
-        self.last_info['opponent_action'] = self.env.actions.index(opponent_act if opponent_act else 'STAND')
+        self.agent_actions = ['STAND'] * (self.team_size * 2)
 
-    
         self.current_episode_score = StatCounter()
         self.restart_episode()
 
     def _grab_raw_image(self):
-        """
-        :returns: the current 3-channel image
-        """
         self.env.render()
         if self.partial:
             screenshot = self.env.renderer.get_po_screenshot(self.player_agent_index, self.radius)
@@ -95,28 +85,27 @@ class SoccerPlayer(RLEnvironment):
             screenshot = self.env.renderer.get_screenshot()
         return screenshot
 
+    def _get_computer_actions(self):
+        # Collaborator
+        for i in range(self.team_size):
+            index = self.env.get_agent_index(self.player_team_name, i)
+            action = self.env.state.get_agent_action(index)
+            self.agent_actions[self.team_size * 0 + i] = action
+        # Opponent
+        for i in range(self.team_size):
+            index = self.env.get_agent_index(self.computer_team_name, i)
+            action = self.env.state.get_agent_action(index)
+            self.agent_actions[self.team_size * 1 + i] = action
+        return np.asarray([self.env.actions.index(act if act else 'STAND') for act in self.agent_actions])
+
     def current_state(self):
-        """
-        :returns: a gray-scale (h, w) uint8 image
-        """
         ret = self._grab_raw_image()
-        # max-pooled over the last screen
-        #ret = np.maximum(ret, self.last_raw_screen)
-        '''
-        if self.viz:
-            if isinstance(self.viz, float):
-                cv2.imshow('soccer', ret)
-                cv2.waitKey(1)
-        '''
-        #ret = ret[self.height_range[0]:self.height_range[1], :].astype('float32')
-        # 0.299,0.587.0.114. same as rgb2y in torch/image
         ret = cv2.cvtColor(ret, cv2.COLOR_RGB2GRAY)
         ret = cv2.resize(ret, self.image_shape)
         return ret.astype('uint8')  # to save some memory
 
     def get_action_space(self):
         return DiscreteActionSpace(len(self.actions))
-
 
     def finish_episode(self):
         self.stats['score'].append(self.current_episode_score.sum)
@@ -125,29 +114,20 @@ class SoccerPlayer(RLEnvironment):
         self.current_episode_score.reset()
         self.env.reset()
         if self.mode in ['OFFENSIVE', 'DEFENSIVE']:
-            self.env.state.set_agent_mode(self.computer_agent_index, self.mode)
- 
+            self.env.state.set_agent_mode(self.computer_agent_index, self.mode) 
         self.last_raw_screen = self._grab_raw_image()
 
     def action(self, act):
-        """
-        :param act: an index of the action
-        :returns: (reward, isOver)
-        """
         r = 0
-        info = {}
         for k in range(self.frame_skip):
             if k == self.frame_skip - 1:
                 self.last_raw_screen = self._grab_raw_image()
             ret = self.env.take_action(self.env.actions[act])
             if k == 0:
-                opponent_act = self.env.state.get_agent_action(self.computer_agent_index)
-                info['opponent_action'] = self.env.actions.index(opponent_act if opponent_act else 'STAND')
-        
+                self.last_info['agent_actions'] = self._get_computer_actions()      
             r += ret.reward
             if self.env.state.is_terminal():
                 break
-        self.last_info = info
         if self.mode == 'RANDOM':
             modes = ['OFFENSIVE', 'DEFENSIVE']
             self.env.state.set_agent_mode(self.computer_agent_index, random.choice(modes))
@@ -160,16 +140,4 @@ class SoccerPlayer(RLEnvironment):
         return (r, isOver)
 
     def get_internal_state(self):
-        return self.last_info
-
-class SoccerPlayerWithInternalState(SoccerPlayer):
-    def current_state(self):
-        img = self._grab_raw_image()
-        img = cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
-        img = cv2.resize(img, self.image_shape)
-        
-        # Last action (a_t_1)
-        act = self.get_internal_state()['opponent_action']
-
-        return (ret.astype('uint8'), act)  # to save some memory
-     
+        return self.last_info    

@@ -15,7 +15,8 @@ from tensorpack.tfutils import symbolic_functions as symbf
 
 
 class Model(ModelDesc):
-    def __init__(self, image_shape, channel, method, num_actions, gamma, lr=1e-3, lamb=1.0, keep_state=False, h_size=512, update_step=1):
+    def __init__(self, image_shape, channel, method, num_actions, gamma, 
+                lr=1e-3, lamb=1.0, keep_state=False, h_size=512, update_step=1, multi_task=False, num_agents=1):
         self.image_shape = image_shape
         self.channel = channel
         self.method = method
@@ -26,6 +27,8 @@ class Model(ModelDesc):
         self.keep_state = keep_state
         self.h_size = h_size
         self.update_step = update_step
+        self.multi_task = multi_task
+        self.num_agents = 1
 
     def _get_inputs(self):
         # Use a combined state for efficiency.
@@ -37,7 +40,7 @@ class Model(ModelDesc):
                     InputDesc(tf.int64, (None, self.channel + 1), 'action'),
                     InputDesc(tf.float32, (None, self.channel + 1), 'reward'),
                     InputDesc(tf.bool, (None, self.channel + 1), 'isOver'),
-                    InputDesc(tf.int64, (None, self.channel + 1), 'action_o'),
+                    InputDesc(tf.int64, (None, self.channel + 1, self.num_agents), 'action_o'),
                     InputDesc(tf.float32, (None, 2, self.h_size), 'q_rnn_state'),
                     InputDesc(tf.float32, (None, 2, self.h_size), 'pi_rnn_state')] 
         else:
@@ -47,7 +50,7 @@ class Model(ModelDesc):
                     InputDesc(tf.int64, (None, self.channel + 1), 'action'),
                     InputDesc(tf.float32, (None, self.channel + 1), 'reward'),
                     InputDesc(tf.bool, (None, self.channel + 1), 'isOver'),
-                    InputDesc(tf.int64, (None, self.channel + 1), 'action_o')]
+                    InputDesc(tf.int64, (None, self.channel + 1, self.num_agents), 'action_o')]
 
     @abc.abstractmethod
     def _get_DQN_prediction(self, image):
@@ -63,12 +66,12 @@ class Model(ModelDesc):
         action = tf.slice(action, [0, 0], [-1, self.update_step])
         reward = tf.slice(reward, [0, 0], [-1, self.update_step])
         isOver = tf.slice(isOver, [0, 0], [-1, self.update_step])
-        action_o = tf.slice(action_o, [0, 0], [-1, self.update_step])
+        action_o = tf.slice(action_o, [0, 0, 0], [-1, self.update_step, self.num_agents])
 
         action = tf.reshape(action, (self.batch_size * self.update_step,))
         reward = tf.reshape(reward, (self.batch_size * self.update_step,))
         isOver = tf.reshape(isOver, (self.batch_size * self.update_step,))
-        action_o = tf.reshape(action_o, (self.batch_size * self.update_step,))
+        action_o = tf.reshape(action_o, (self.batch_size * self.update_step, self.num_agents))
 
         comb_state = tf.cast(comb_state, tf.float32)
         state = tf.slice(comb_state, [0, 0, 0, 0], [-1, -1, -1, self.channel], name='state')
@@ -84,7 +87,6 @@ class Model(ModelDesc):
         reward = tf.clip_by_value(reward, -1, 1)
         next_state = tf.slice(comb_state, [0, 0, 0, 1], [-1, -1, -1, self.channel], name='next_state')
         action_onehot = tf.one_hot(action, self.num_actions, 1.0, 0.0)
-        action_o_one_hot = tf.one_hot(action_o, self.num_actions, 1.0, 0.0)
 
         pred_action_value = tf.reduce_sum(self.predict_value * action_onehot, 1)  # N,
         max_pred_reward = tf.reduce_mean(tf.reduce_max(
@@ -109,8 +111,17 @@ class Model(ModelDesc):
 
         target = reward + (1.0 - tf.cast(isOver, tf.float32)) * self.gamma * tf.stop_gradient(best_v)
         
+        # q cost
         q_cost = (symbf.huber_loss(target - pred_action_value))
-        pi_cost = self.lamb * (tf.nn.softmax_cross_entropy_with_logits(labels=action_o_one_hot, logits=pi_value))
+        # pi cost
+        action_os = tf.unstack(action_o, self.num_agents, axis=1)
+        action_o_one_hots = []
+        for o in action_os:
+            action_o_one_hots.append(tf.one_hot(o, self.num_actions, 1.0, 0.0))
+        pi_costs = []
+        for i, o in enumerate(action_o_one_hots):
+            pi_costs.append(tf.nn.softmax_cross_entropy_with_logits(labels=o, logits=pi_value[i]))
+        pi_cost = self.lamb * tf.add_n(pi_costs)
         self.cost = tf.reduce_mean(q_cost + pi_cost)
 
         summary.add_param_summary(('conv.*/W', ['histogram', 'rms']),
@@ -119,10 +130,9 @@ class Model(ModelDesc):
         summary.add_moving_summary(tf.reduce_mean(pi_cost, name='pi_cost'))
         summary.add_moving_summary(tf.reduce_mean(q_cost, name='q_cost'))
 
-        pred = tf.argmax(pi_value, axis=1)
-        summary.add_moving_summary(tf.contrib.metrics.accuracy(pred, action_o))
-
-
+        for i, o_t in enumerate(action_os):
+            pred = tf.argmax(pi_value[i], axis=1)
+            summary.add_moving_summary(tf.contrib.metrics.accuracy(pred, o_t, name='acc-%d' % i))
 
 
     def _get_optimizer(self):
