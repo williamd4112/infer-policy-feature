@@ -54,6 +54,7 @@ RNN_CELL = None
 NO_FC = False
 SINGLE_RNN = False
 RNN_HIDDEN = 512
+RNN_STEP = 1
 
 def get_player(viz=False, train=False):
     pl = SoccerPlayer(image_shape=IMAGE_SIZE[::-1], viz=viz, frame_skip=ACTION_REPEAT, field=FIELD, ai_frame_skip=AI_SKIP)
@@ -77,7 +78,7 @@ def get_rnn_cell():
 
 class Model(DQNModel):
     def __init__(self):
-        super(Model, self).__init__(IMAGE_SIZE, FRAME_HISTORY, METHOD, NUM_ACTIONS, GAMMA, LR, LAMB, KEEP_STATE, RNN_HIDDEN)
+        super(Model, self).__init__(IMAGE_SIZE, FRAME_HISTORY, METHOD, NUM_ACTIONS, GAMMA, LR, LAMB, KEEP_STATE, RNN_HIDDEN, RNN_STEP)
     
     def get_rnn_init_state(self, name):
         if self.keep_state:
@@ -132,15 +133,17 @@ class Model(DQNModel):
                                 cell=get_rnn_cell(), 
                                 initial_state=self.get_rnn_init_state('q'),
                                 dtype=tf.float32, scope='rnn-q')
-                    q_l = q_l[:, -1, :]
+                    q_l = q_l[:, -RNN_STEP:, :]
+                    q_l = tf.reshape(q_l, (self.batch_size * RNN_STEP, 512))                    
+
                     # pi
                     pi_l = tf.reshape(pi_l, [self.batch_size, self.channel, 512])
                     pi_l, pi_rnn_state_out = tf.nn.dynamic_rnn(inputs=pi_l, 
                                 cell=get_rnn_cell(),
                                 initial_state=self.get_rnn_init_state('pi'),
                                 dtype=tf.float32, scope='rnn-pi')
-                    pi_l = pi_l[:, -1, :]
-            
+                    pi_l = pi_l[:, -RNN_STEP:, :]
+                    pi_l = tf.reshape(pi_l, (self.batch_size * RNN_STEP, 512))                    
 
         pi_y = FullyConnected('fc-pi-t', pi_l, self.num_actions, nl=tf.identity)
         
@@ -230,6 +233,7 @@ if __name__ == '__main__':
     parser.add_argument('--no_fc', help='no fc', type=int, default=0)
     parser.add_argument('--single_rnn', help='single rnn', type=int, default=0)
     parser.add_argument('--rnn_h', help='rnn hidden', type=int, required=True)
+    parser.add_argument('--rnn_step', help='rnn update step', type=int, default=1)
     args = parser.parse_args()
 
     if args.gpu:
@@ -249,9 +253,10 @@ if __name__ == '__main__':
     KEEP_STATE = bool(args.keep_state)
     NO_FC = bool(args.no_fc)
     RNN_HIDDEN = args.rnn_h
+    RNN_STEP = args.rnn_step
     train_logdir = args.log    
 
-    logger.info('USE_RNN = {}, NO_FC = {}, SINGLE_RNN = {}, RNN_HIDDEN = {}'.format(USE_RNN, NO_FC, SINGLE_RNN, RNN_HIDDEN))
+    logger.info('USE_RNN = {}, NO_FC = {}, SINGLE_RNN = {}, RNN_HIDDEN = {}, RNN_STEP = {}'.format(USE_RNN, NO_FC, SINGLE_RNN, RNN_HIDDEN, RNN_STEP))
 
     if KEEP_STATE:
         assert USE_RNN, 'CNN model not compatiable with keep_state'
@@ -264,7 +269,7 @@ if __name__ == '__main__':
         output_names=['Qvalue']
 
     if USE_RNN:
-        MODEL_NAME = '%s-RPI-%d-keep-%s-nofc-%s-single-%s-%s' % (args.algo, RNN_HIDDEN, KEEP_STATE, NO_FC, SINGLE_RNN, RNN_CELL)
+        MODEL_NAME = '%s-RPI-%d-step-%d-keep-%s-nofc-%s-single-%s-%s' % (args.algo, RNN_HIDDEN, RNN_STEP, KEEP_STATE, NO_FC, SINGLE_RNN, RNN_CELL)
     else:
         MODEL_NAME = '%s-PI' % (args.algo)
 

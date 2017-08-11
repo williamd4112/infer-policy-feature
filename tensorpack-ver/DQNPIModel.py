@@ -15,7 +15,7 @@ from tensorpack.tfutils import symbolic_functions as symbf
 
 
 class Model(ModelDesc):
-    def __init__(self, image_shape, channel, method, num_actions, gamma, lr=1e-3, lamb=1.0, keep_state=False, h_size=512):
+    def __init__(self, image_shape, channel, method, num_actions, gamma, lr=1e-3, lamb=1.0, keep_state=False, h_size=512, update_step=1):
         self.image_shape = image_shape
         self.channel = channel
         self.method = method
@@ -25,6 +25,7 @@ class Model(ModelDesc):
         self.lamb = lamb
         self.keep_state = keep_state
         self.h_size = h_size
+        self.update_step = update_step
 
     def _get_inputs(self):
         # Use a combined state for efficiency.
@@ -33,20 +34,20 @@ class Model(ModelDesc):
             return [InputDesc(tf.uint8,
                           (None,) + self.image_shape + (self.channel + 1,),
                           'comb_state'),
-                    InputDesc(tf.int64, (None,), 'action'),
-                    InputDesc(tf.float32, (None,), 'reward'),
-                    InputDesc(tf.bool, (None,), 'isOver'),
-                    InputDesc(tf.int64, (None,), 'action_o'),
+                    InputDesc(tf.int64, (None, self.channel + 1), 'action'),
+                    InputDesc(tf.float32, (None, self.channel + 1), 'reward'),
+                    InputDesc(tf.bool, (None, self.channel + 1), 'isOver'),
+                    InputDesc(tf.int64, (None, self.channel + 1), 'action_o'),
                     InputDesc(tf.float32, (None, 2, self.h_size), 'q_rnn_state'),
-                    InputDesc(tf.float32, (None, 2, self.h_size), 'pi_rnn_state')]
+                    InputDesc(tf.float32, (None, 2, self.h_size), 'pi_rnn_state')] 
         else:
             return [InputDesc(tf.uint8,
                               (None,) + self.image_shape + (self.channel + 1,),
                               'comb_state'),
-                    InputDesc(tf.int64, (None,), 'action'),
-                    InputDesc(tf.float32, (None,), 'reward'),
-                    InputDesc(tf.bool, (None,), 'isOver'),
-                    InputDesc(tf.int64, (None,), 'action_o')]
+                    InputDesc(tf.int64, (None, self.channel + 1), 'action'),
+                    InputDesc(tf.float32, (None, self.channel + 1), 'reward'),
+                    InputDesc(tf.bool, (None, self.channel + 1), 'isOver'),
+                    InputDesc(tf.int64, (None, self.channel + 1), 'action_o')]
 
     @abc.abstractmethod
     def _get_DQN_prediction(self, image):
@@ -55,8 +56,21 @@ class Model(ModelDesc):
     def _build_graph(self, inputs):
         if self.keep_state:
             comb_state, action, reward, isOver, action_o, q_rnn_state, pi_rnn_state = inputs
+            action = tf.reshape(action,)
         else:
             comb_state, action, reward, isOver, action_o = inputs
+        self.batch_size = tf.shape(comb_state)[0]
+
+        action = tf.slice(action, [0, 0], [-1, self.update_step])
+        reward = tf.slice(reward, [0, 0], [-1, self.update_step])
+        isOver = tf.slice(isOver, [0, 0], [-1, self.update_step])
+        action_o = tf.slice(action_o, [0, 0], [-1, self.update_step])
+
+        action = tf.reshape(action, (self.batch_size * self.update_step,))
+        reward = tf.reshape(reward, (self.batch_size * self.update_step,))
+        isOver = tf.reshape(isOver, (self.batch_size * self.update_step,))
+        action_o = tf.reshape(action_o, (self.batch_size * self.update_step,))
+
         comb_state = tf.cast(comb_state, tf.float32)
         state = tf.slice(comb_state, [0, 0, 0, 0], [-1, -1, -1, self.channel], name='state')
     

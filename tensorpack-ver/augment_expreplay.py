@@ -57,7 +57,7 @@ class AugmentReplayMemory(ReplayMemory):
                 state[:k + 1].fill(0)
                 break
         state = state.transpose(1, 2, 0)
-        return (state, reward[-2], action[-2], isOver[-2], action_o[-2])
+        return (state, reward, action, isOver, action_o)
 
     def _assign(self, pos, exp):
         self.state[pos] = exp.state
