@@ -56,7 +56,6 @@ class Model(ModelDesc):
     def _build_graph(self, inputs):
         if self.keep_state:
             comb_state, action, reward, isOver, action_o, q_rnn_state, pi_rnn_state = inputs
-            action = tf.reshape(action,)
         else:
             comb_state, action, reward, isOver, action_o = inputs
         self.batch_size = tf.shape(comb_state)[0]
