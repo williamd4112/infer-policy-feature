@@ -28,7 +28,7 @@ class Model(ModelDesc):
         self.h_size = h_size
         self.update_step = update_step
         self.multi_task = multi_task
-        self.num_agents = 1
+        self.num_agents = num_agents
 
     def _get_inputs(self):
         # Use a combined state for efficiency.
