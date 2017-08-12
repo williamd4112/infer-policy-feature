@@ -84,7 +84,7 @@ class Model(DQNModel):
         super(Model, self).__init__(IMAGE_SIZE, FRAME_HISTORY, METHOD, 
             NUM_ACTIONS, GAMMA, LR, LAMB, KEEP_STATE, RNN_HIDDEN, RNN_STEP, MULTI_TASK, 3 if MULTI_TASK else 1)
     
-    def get_rnn_init_state(self, name):
+    def get_rnn_init_state(self, cell, name):
         if self.keep_state:
             if RNN_CELL == 'gru':
                 raise NotImplemented()
@@ -98,7 +98,7 @@ class Model(DQNModel):
             else:
                 assert 0
         else:
-            return None
+            return cell.zero_state(self.batch_size, tf.float32)
 
     def _get_DQN_prediction(self, image):
         """ image: [0,255]"""
@@ -133,18 +133,20 @@ class Model(DQNModel):
                     if SINGLE_RNN:
                         q_l = tf.multiply(q_l, pi_l)
                     q_l = tf.reshape(q_l, [self.batch_size, self.channel, FC_HIDDEN])
+                    q_cell = get_rnn_cell()
                     q_l, q_rnn_state_out = tf.nn.dynamic_rnn(inputs=q_l, 
-                                cell=get_rnn_cell(), 
-                                initial_state=self.get_rnn_init_state('q'),
+                                cell=q_cell, 
+                                initial_state=self.get_rnn_init_state(q_cell, 'q'),
                                 dtype=tf.float32, scope='rnn-q')
                     q_l = q_l[:, -RNN_STEP:, :]
                     q_l = tf.reshape(q_l, (self.batch_size * RNN_STEP, FC_HIDDEN))                    
 
                     # pi
                     pi_l = tf.reshape(pi_l, [self.batch_size, self.channel, FC_HIDDEN])
+                    pi_cell = get_rnn_cell()
                     pi_l, pi_rnn_state_out = tf.nn.dynamic_rnn(inputs=pi_l, 
-                                cell=get_rnn_cell(),
-                                initial_state=self.get_rnn_init_state('pi'),
+                                cell=pi_cell,
+                                initial_state=self.get_rnn_init_state(pi_cell, 'pi'),
                                 dtype=tf.float32, scope='rnn-pi')
                     pi_l = pi_l[:, -RNN_STEP:, :]
                     pi_l = tf.reshape(pi_l, (self.batch_size * RNN_STEP, FC_HIDDEN))                    
