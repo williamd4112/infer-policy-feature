@@ -121,14 +121,12 @@ class Model(DQNModel):
                      .Conv2D('conv2', out_channel=64, kernel_shape=3)())                    
 
                 if NO_FC:
-                    q_l = Conv2D('conv-q', h, out_channel=FC_HIDDEN, kernel_shape=7, stride=1, padding=padding)
-                    q_l = symbf.batch_flatten(q_l)
-                    pi_l = Conv2D('conv-pi', h, out_channel=FC_HIDDEN, kernel_shape=7, stride=1, padding=padding)
-                    pi_l = symbf.batch_flatten(pi_l)            
+                    h = symbf.batch_flatten(h)
+                    q_l = h
+                    pi_l = h
                 else:
                     q_l = FullyConnected('fc0-q', h, FC_HIDDEN, nl=LeakyReLU)
                     pi_l = FullyConnected('fc0-pi', h, FC_HIDDEN, nl=LeakyReLU)
-
 
                 if USE_RNN:
                     # q
@@ -141,7 +139,7 @@ class Model(DQNModel):
                                 initial_state=self.get_rnn_init_state(q_cell, 'q'),
                                 dtype=tf.float32, scope='rnn-q')
                     q_l = q_l[:, -RNN_STEP:, :]
-                    q_l = tf.reshape(q_l, (self.batch_size * RNN_STEP, FC_HIDDEN))                    
+                    q_l = tf.reshape(q_l, (self.batch_size * RNN_STEP, RNN_HIDDEN))                    
 
                     # pi
                     pi_l = tf.reshape(pi_l, [self.batch_size, self.channel, FC_HIDDEN])
@@ -151,7 +149,7 @@ class Model(DQNModel):
                                 initial_state=self.get_rnn_init_state(pi_cell, 'pi'),
                                 dtype=tf.float32, scope='rnn-pi')
                     pi_l = pi_l[:, -RNN_STEP:, :]
-                    pi_l = tf.reshape(pi_l, (self.batch_size * RNN_STEP, FC_HIDDEN))                    
+                    pi_l = tf.reshape(pi_l, (self.batch_size * RNN_STEP, RNN_HIDDEN))                    
         
         pi_ys = []
         for i in range(self.num_agents):
@@ -304,6 +302,8 @@ if __name__ == '__main__':
     scenario = 'MT' if MULTI_TASK else 'ST'
     if USE_RNN:
         MODEL_NAME = '%s-%s-RPI-%d-%d-step-%d-keep-%s-nofc-%s-single-%s-%s' % (scenario, args.algo, FC_HIDDEN, RNN_HIDDEN, RNN_STEP, KEEP_STATE, NO_FC, SINGLE_RNN, RNN_CELL)
+        if NO_FC:
+            FC_HIDDEN = 11*11*64
     else:
         MODEL_NAME = '%s-%s-PI-%d' % (scenario, args.algo, FC_HIDDEN)
 
