@@ -58,6 +58,8 @@ RNN_HIDDEN = 512
 RNN_STEP = 1
 UPDATE_TARGET_STEP = 10000
 MULTI_TASK = False
+LR_LIST = None
+EPS_LIST = None
 
 def get_player(viz=False, train=False):
     pl = SoccerPlayer(image_shape=IMAGE_SIZE[::-1], viz=viz, frame_skip=ACTION_REPEAT, field=FIELD, ai_frame_skip=AI_SKIP, team_size=2 if MULTI_TASK else 1)
@@ -198,6 +200,16 @@ def get_config():
         num_agents=(3 if MULTI_TASK else 1)
     )
 
+    lr_schedule = []
+    for p in LR_LIST.split(','):
+        ep, lr = p.split(':')
+        lr_schedule.append((int(ep), float(lr)))
+
+    eps_schedule = []
+    for p in EPS_LIST.split(','):
+        ep, eps = p.split(':')
+        eps_schedule.append((int(ep), float(eps)))
+
     return TrainConfig(
         dataflow=expreplay,
         callbacks=[
@@ -207,10 +219,10 @@ def get_config():
                 every_k_steps=UPDATE_TARGET_STEP // UPDATE_FREQ),    # update target network every 10k steps
             expreplay,
             ScheduledHyperParamSetter('learning_rate',
-                                      [(600, 4e-4), (1000, 2e-4)]),
+                                      lr_schedule),
             ScheduledHyperParamSetter(
                 ObjAttrParam(expreplay, 'exploration'),
-                [(0, 1), (100, 0.1), (3200, 0.01)],   # 1->0.1 in the first million steps
+                eps_schedule,   # 1->0.1 in the first million steps
                 interp='linear'),
             HumanHyperParamSetter('learning_rate'),
         ],
@@ -249,6 +261,8 @@ if __name__ == '__main__':
     parser.add_argument('--rnn_step', help='rnn update step', type=int, default=1)
     parser.add_argument('--fc_h', help='fc hidden', type=int, default=512)
     parser.add_argument('--update_target_step', help='target update step', type=int, default=10000)
+    parser.add_argument('--lr_list', help='lr schedule', type=str, default='600:4e-4,1000:2e-4')
+    parser.add_argument('--eps_list', help='eps schedule', type=str, default='100:0.1,3200:0.01')
     args = parser.parse_args()
 
     if args.gpu:
@@ -272,6 +286,9 @@ if __name__ == '__main__':
     RNN_STEP = args.rnn_step
     FC_HIDDEN = args.fc_h
     UPDATE_TARGET_STEP = args.update_target_step
+    LR_LIST = args.lr_list
+    EPS_LIST = args.eps_list
+
     train_logdir = args.log    
 
     logger.info('USE_RNN = {}, NO_FC = {}, SINGLE_RNN = {}, RNN_HIDDEN = {}, RNN_STEP = {}'.format(USE_RNN, NO_FC, SINGLE_RNN, RNN_HIDDEN, RNN_STEP))
@@ -306,8 +323,8 @@ if __name__ == '__main__':
             eval_model_multithread(cfg, EVAL_EPISODE, get_player)
     else:
         logger.set_logger_dir(
-            os.path.join(train_logdir, '{}-aux-field-{}-skip-{}-ai_skip-{}-hist-{}-batch-{}-lr-{}-lamb-{}-update-{}-{}'.format(
-                MODEL_NAME, args.field, args.skip, args.ai_skip, args.hist_len, args.batch_size, args.lr, args.lamb, UPDATE_TARGET_STEP, os.path.basename('soccer').split('.')[0])))
+            os.path.join(train_logdir, '{}-aux-field-{}-skip-{}-ai_skip-{}-hist-{}-batch-{}-lr-{}-{}-eps-{}-lamb-{}-update-{}-{}'.format(
+                MODEL_NAME, args.field, args.skip, args.ai_skip, args.hist_len, args.batch_size, args.lr, args.lr_list, args.eps_list, args.lamb, UPDATE_TARGET_STEP, os.path.basename('soccer').split('.')[0])))
         config = get_config()
         if args.load:
             config.session_init = SaverRestore(args.load)
