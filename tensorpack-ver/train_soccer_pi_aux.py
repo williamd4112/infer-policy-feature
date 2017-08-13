@@ -60,6 +60,7 @@ UPDATE_TARGET_STEP = 10000
 MULTI_TASK = False
 LR_LIST = None
 EPS_LIST = None
+RNN_ACTIVATION = None
 
 def get_player(viz=False, train=False):
     pl = SoccerPlayer(image_shape=IMAGE_SIZE[::-1], viz=viz, frame_skip=ACTION_REPEAT, field=FIELD, ai_frame_skip=AI_SKIP, team_size=2 if MULTI_TASK else 1)
@@ -73,11 +74,17 @@ def get_player(viz=False, train=False):
     #pl = LimitLengthPlayer(pl, 30000)
     return pl
 
+def get_activation():
+    if RNN_ACTIVATION == 'relu':
+        return tf.nn.relu
+    else:
+        return None
+
 def get_rnn_cell():
     if RNN_CELL == 'gru':
-        return tf.nn.rnn_cell.GRUCell(num_units=RNN_HIDDEN)
+        return tf.nn.rnn_cell.GRUCell(num_units=RNN_HIDDEN, activation=get_activation())
     elif RNN_CELL == 'lstm':
-        return tf.nn.rnn_cell.LSTMCell(num_units=RNN_HIDDEN, state_is_tuple=True)
+        return tf.nn.rnn_cell.LSTMCell(num_units=RNN_HIDDEN, state_is_tuple=True, activation=get_activation())
     else:
         assert 0
 
@@ -243,6 +250,8 @@ if __name__ == '__main__':
                         choices=['DQN', 'Double', 'Dueling'], default='DQN')
     parser.add_argument('--cell', help='cell',
                         choices=['gru', 'lstm', None], default=None)
+    parser.add_argument('--rnn_activation', help='rnn activation',
+                        choices=['relu', None], default=None)
     parser.add_argument('--mt', help='2vs2', type=int, required=True)
     parser.add_argument('--skip', help='act repeat', type=int, required=True)
     parser.add_argument('--ai_skip', help='ai act repeat', type=int, required=True)
@@ -286,6 +295,7 @@ if __name__ == '__main__':
     UPDATE_TARGET_STEP = args.update_target_step
     LR_LIST = args.lr_list
     EPS_LIST = args.eps_list
+    RNN_ACTIVATION = args.rnn_activation
 
     train_logdir = args.log    
 
@@ -301,7 +311,7 @@ if __name__ == '__main__':
 
     scenario = 'MT' if MULTI_TASK else 'ST'
     if USE_RNN:
-        MODEL_NAME = '%s-%s-RPI-%d-%d-step-%d-keep-%s-nofc-%s-single-%s-%s' % (scenario, args.algo, FC_HIDDEN, RNN_HIDDEN, RNN_STEP, KEEP_STATE, NO_FC, SINGLE_RNN, RNN_CELL)
+        MODEL_NAME = '%s-%s-RPI-activation-%s-%d-%d-step-%d-keep-%s-nofc-%s-single-%s-%s' % (scenario, args.algo, RNN_ACTIVATION, FC_HIDDEN, RNN_HIDDEN, RNN_STEP, KEEP_STATE, NO_FC, SINGLE_RNN, RNN_CELL)
         if NO_FC:
             FC_HIDDEN = 11*11*64
     else:
