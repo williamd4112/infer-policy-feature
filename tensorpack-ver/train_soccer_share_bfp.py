@@ -217,6 +217,7 @@ if __name__ == '__main__':
     parser.add_argument('--sep', dest='sep', action='store_true')
     parser.add_argument('--full', dest='full', action='store_true')
     parser.add_argument('--mix', dest='mix', action='store_true')
+    parser.add_argument('--freq', dest='freq', type=int, default=4)
 
     args = parser.parse_args()
 
@@ -235,12 +236,13 @@ if __name__ == '__main__':
     SEP = args.sep
     FULLY_SHARE = args.full
     MIX = args.mix
+    UPDATE_FREQ = args.freq
 
     if args.fast:
         LR_RATE = [(60, 4e-4), (100, 2e-4)]
         EXP_RATE = [(0, 1), (10, 0.1), (320, 0.01)]
     else:
-        LR_RATE = [(40, 4e-4), (80, 2e-4)]
+        LR_RATE = [(20, 4e-4), (40, 2e-4)]
         EXP_RATE = [(0, 1), (40, 0.1), (80, 0.01)]
 
     # set num_actions
@@ -260,10 +262,10 @@ if __name__ == '__main__':
     else:
         logger.set_logger_dir(
             os.path.join('train_log',
-                'DQNBFPI-SHARE-field-{}-skip-{}-hist-{}-batch-{}-{}-{}-{}-decay-{}-aiskip-{}-{}-{}-{}'.format(
+                'DQNBFPI-SHARE-field-{}-skip-{}-hist-{}-batch-{}-{}-{}-{}-decay-{}-aiskip-{}-{}-{}-{}-{}'.format(
                 args.field, args.skip, args.hist_len, args.batch_size, os.path.basename('soccer').split('.')[0], LAMB,
                 'fast' if args.fast else 'slow', args.fp_decay, args.ai_skip, 'sep' if args.sep else '',
-                'full' if args.full else  '', 'cmix' if args.mix else '')))
+                'full' if args.full else  '', 'cmix' if args.mix else '', 'rnn' if args.rnn else '')))
         config = get_config()
         if args.load:
             config.session_init = SaverRestore(args.load)
