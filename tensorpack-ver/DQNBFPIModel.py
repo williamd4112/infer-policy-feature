@@ -94,7 +94,7 @@ class Model(ModelDesc):
         fp_cost = self.fp_decay * self.lamb * (tf.nn.softmax_cross_entropy_with_logits(labels=next_action_o_one_hot, logits=fp_value))
         bp_cost = self.lamb * (tf.nn.softmax_cross_entropy_with_logits(labels=old_action_o_one_hot, logits=bp_value))
         avg_cost = tf.reduce_mean((pi_cost + fp_cost + bp_cost) / 3.0, name='avg_cost')
-        reg_coef = tf.stop_gradient((1.0 / avg_cost), name='reg_coef')
+        reg_coef = tf.stop_gradient(tf.sqrt(1.0 / avg_cost), name='reg_coef')
 
         if self.use_reg :
             self.cost = tf.reduce_mean(reg_coef * q_cost + avg_cost, name='total_cost')
