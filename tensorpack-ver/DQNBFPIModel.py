@@ -93,8 +93,9 @@ class Model(ModelDesc):
         fp_cost = self.fp_decay * self.lamb * (tf.nn.softmax_cross_entropy_with_logits(labels=next_action_o_one_hot, logits=fp_value))
         bp_cost = self.lamb * (tf.nn.softmax_cross_entropy_with_logits(labels=old_action_o_one_hot, logits=bp_value))
         avg_cost = tf.reduce_mean((pi_cost + fp_cost + bp_cost) / 3.0, name='avg_cost')
+        reg_coef = tf.stop_gradient((1.0 / avg_cost), name='reg_coef')
         #self.cost = tf.reduce_mean(q_cost + bp_cost + pi_cost + fp_cost, name='total_cost')
-        self.cost = tf.reduce_mean(q_cost + avg_cost, name='total_cost')
+        self.cost = tf.reduce_mean(reg_coef * q_cost + avg_cost, name='total_cost')
 
         pred_c = tf.argmax(pi_value, axis=1)
         pred_fp = tf.argmax(fp_value, axis=1)
@@ -108,6 +109,7 @@ class Model(ModelDesc):
         summary.add_moving_summary(tf.reduce_mean(q_cost, name='q_cost'))
         summary.add_moving_summary(tf.reduce_mean(fp_cost, name='fp_cost'))
         summary.add_moving_summary(avg_cost)
+        summary.add_moving_summary(reg_coef)
         summary.add_moving_summary(tf.contrib.metrics.accuracy(pred_bp, old_action_o, name='pred_bp_acc'))
         summary.add_moving_summary(tf.contrib.metrics.accuracy(pred_c, act_o, name='pred_c_acc'))
         summary.add_moving_summary(tf.contrib.metrics.accuracy(pred_fp, next_act_o, name='pred_fp_acc'))
