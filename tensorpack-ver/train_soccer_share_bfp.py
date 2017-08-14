@@ -225,7 +225,7 @@ if __name__ == '__main__':
     parser.add_argument('--mix', dest='mix', action='store_true')
     parser.add_argument('--comb', dest='comb', action='store_true')
     parser.add_argument('--freq', dest='freq', type=int, default=4)
-    parser.add_argument('--reg', dest='freq', type=int, default=4)
+    parser.add_argument('--reg', dest='reg', action='store_true')
 
     args = parser.parse_args()
 
@@ -246,7 +246,7 @@ if __name__ == '__main__':
     MIX = args.mix
     UPDATE_FREQ = args.freq
     COMB = args.comb
-    USE_REG = args.use_reg
+    USE_REG = args.reg
 
 
     if args.fast:
