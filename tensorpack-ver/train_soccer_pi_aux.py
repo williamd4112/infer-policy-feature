@@ -77,6 +77,8 @@ def get_player(viz=False, train=False):
 def get_activation():
     if RNN_ACTIVATION == 'relu':
         return tf.nn.relu
+    elif RNN_ACTIVATION == 'leaky-relu':
+        return LeakyReLU
     else:
         return None
 
@@ -251,7 +253,7 @@ if __name__ == '__main__':
     parser.add_argument('--cell', help='cell',
                         choices=['gru', 'lstm', None], default=None)
     parser.add_argument('--rnn_activation', help='rnn activation',
-                        choices=['relu', None], default=None)
+                        choices=['relu', 'leaky-relu', None], default=None)
     parser.add_argument('--mt', help='2vs2', type=int, required=True)
     parser.add_argument('--skip', help='act repeat', type=int, required=True)
     parser.add_argument('--ai_skip', help='ai act repeat', type=int, required=True)
