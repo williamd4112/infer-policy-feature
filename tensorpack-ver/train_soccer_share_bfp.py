@@ -49,6 +49,7 @@ LR_RATE = None
 AI_SKIP = 2
 SEP = False
 FULLY_SHARE = False
+COMB = False
 
 
 NUM_ACTIONS = None
@@ -56,6 +57,7 @@ METHOD = None
 FIELD = None
 USE_RNN = False
 MIX = False
+USE_REG = False
 
 def get_player(viz=False, train=False):
     pl = SoccerPlayer(image_shape=IMAGE_SIZE[::-1], viz=viz, frame_skip=ACTION_REPEAT, field=FIELD, ai_frame_skip=AI_SKIP)
@@ -72,7 +74,7 @@ def get_player(viz=False, train=False):
 
 class Model(DQNModel):
     def __init__(self):
-        super(Model, self).__init__(IMAGE_SIZE, FRAME_HISTORY, METHOD, NUM_ACTIONS, GAMMA, lr=LR, lamb=LAMB, fp_decay=FP_DECAY)
+        super(Model, self).__init__(IMAGE_SIZE, FRAME_HISTORY, METHOD, NUM_ACTIONS, GAMMA, lr=LR, lamb=LAMB, fp_decay=FP_DECAY, use_reg=USE_REG)
 
     def _get_DQN_prediction(self, image):
         """ image: [0,255]"""
@@ -118,14 +120,18 @@ class Model(DQNModel):
                 else:
                     q_h = FullyConnected('qfc1', q_l, 256, nl=LeakyReLU)
 
+                l = tf.multiply(q_h, p_h, name='mul')
 
                 if not SEP :
-                    l = tf.multiply(q_h, p_h, name='mul')
-                    pi_y = FullyConnected('fcpi0', l, 128, nl=LeakyReLU)
-                    bp_y = FullyConnected('fcbp0', l, 128, nl=LeakyReLU)
-                    fp_y = FullyConnected('fcfp0', l, 128, nl=LeakyReLU)
+                    if COMB:
+                        pi_y = FullyConnected('fcpi0', p_h, 128, nl=LeakyReLU)
+                        bp_y = FullyConnected('fcbp0', p_h, 128, nl=LeakyReLU)
+                        fp_y = FullyConnected('fcfp0', p_h, 128, nl=LeakyReLU)
+                    else :
+                        pi_y = FullyConnected('fcpi0', l, 128, nl=LeakyReLU)
+                        bp_y = FullyConnected('fcbp0', l, 128, nl=LeakyReLU)
+                        fp_y = FullyConnected('fcfp0', l, 128, nl=LeakyReLU)
                 else :
-                    l = tf.multiply(q_h, p_h, name='mul')
                     pi_y = p_h
                     bp_y = p_h
                     fp_y = p_h
@@ -217,7 +223,9 @@ if __name__ == '__main__':
     parser.add_argument('--sep', dest='sep', action='store_true')
     parser.add_argument('--full', dest='full', action='store_true')
     parser.add_argument('--mix', dest='mix', action='store_true')
+    parser.add_argument('--comb', dest='comb', action='store_true')
     parser.add_argument('--freq', dest='freq', type=int, default=4)
+    parser.add_argument('--reg', dest='freq', type=int, default=4)
 
     args = parser.parse_args()
 
@@ -237,6 +245,9 @@ if __name__ == '__main__':
     FULLY_SHARE = args.full
     MIX = args.mix
     UPDATE_FREQ = args.freq
+    COMB = args.comb
+    USE_REG = args.use_reg
+
 
     if args.fast:
         LR_RATE = [(60, 4e-4), (100, 2e-4)]
@@ -262,10 +273,11 @@ if __name__ == '__main__':
     else:
         logger.set_logger_dir(
             os.path.join('train_log',
-                'DQNBFPI-SHARE-field-{}-skip-{}-hist-{}-batch-{}-{}-{}-{}-decay-{}-aiskip-{}-{}-{}-{}-{}'.format(
+                'DQNBFPI-SHARE-field-{}-skip-{}-hist-{}-batch-{}-{}-{}-{}-decay-{}-aiskip-{}-{}-{}-{}-{}-{}'.format(
                 args.field, args.skip, args.hist_len, args.batch_size, os.path.basename('soccer').split('.')[0], LAMB,
                 'fast' if args.fast else 'slow', args.fp_decay, args.ai_skip, 'sep' if args.sep else '',
-                'full' if args.full else  '', 'cmix' if args.mix else '', 'rnn' if args.rnn else '')))
+                'full' if args.full else  '', 'cmix' if args.mix else '', 'rnn' if args.rnn else '',
+                'comb' if args.comb else '')))
         config = get_config()
         if args.load:
             config.session_init = SaverRestore(args.load)
