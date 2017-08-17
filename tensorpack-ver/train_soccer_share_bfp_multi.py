@@ -19,11 +19,11 @@ from tensorpack.utils.concurrency import *
 from tensorpack.RL import *
 import tensorflow as tf
 
-from DQNBFPIModel import Model as DQNModel
+from DQNBFPIModel_multi import Model as DQNModel
 import common
 from common import play_model, Evaluator, eval_model_multithread
-from soccer_env import SoccerPlayer
-from augment_expreplay_backward import AugmentExpReplay
+from soccer_env_multitask import SoccerPlayer
+from augment_expreplay_bfpm import AugmentExpReplay
 
 from tensorpack.tfutils import symbolic_functions as symbf
 
@@ -49,7 +49,6 @@ LR_RATE = None
 AI_SKIP = 2
 SEP = False
 FULLY_SHARE = False
-COMB = False
 
 
 NUM_ACTIONS = None
@@ -57,6 +56,8 @@ METHOD = None
 FIELD = None
 USE_RNN = False
 MIX = False
+NUM_AGENTS = 1
+COMB = False
 USE_REG = False
 
 def get_player(viz=False, train=False):
@@ -74,7 +75,7 @@ def get_player(viz=False, train=False):
 
 class Model(DQNModel):
     def __init__(self):
-        super(Model, self).__init__(IMAGE_SIZE, FRAME_HISTORY, METHOD, NUM_ACTIONS, GAMMA, lr=LR, lamb=LAMB, fp_decay=FP_DECAY, use_reg=USE_REG)
+        super(Model, self).__init__(IMAGE_SIZE, FRAME_HISTORY, METHOD, NUM_ACTIONS, NUM_AGENTS, GAMMA, lr=LR, lamb=LAMB, fp_decay=FP_DECAY, use_reg=USE_REG)
 
     def _get_DQN_prediction(self, image):
         """ image: [0,255]"""
@@ -120,27 +121,31 @@ class Model(DQNModel):
                 else:
                     q_h = FullyConnected('qfc1', q_l, 256, nl=LeakyReLU)
 
+                pi_ys = []
+                bp_ys = []
+                fp_ys = []
+
+
                 l = tf.multiply(q_h, p_h, name='mul')
 
-                if not SEP :
-                    if COMB :
-                        p_layer = p_h
-                    else :
-                        p_layer = l
-
-                    pi_y = FullyConnected('fcpi0', p_layer, 128, nl=LeakyReLU)
-                    bp_y = FullyConnected('fcbp0', p_layer, 128, nl=LeakyReLU)
-                    fp_y = FullyConnected('fcfp0', p_layer, 128, nl=LeakyReLU)
+                if COMB :
+                    p_layer = p_h
                 else :
-                    pi_y = p_h
-                    bp_y = p_h
-                    fp_y = p_h
+                    p_layer = l
+
+                for i in range(self.num_agents):
+                    pi_ys.append(FullyConnected('fcpi0-{}'.format(i), p_layer, 128, nl=LeakyReLU))
+                    bp_ys.append(FullyConnected('fcbp0-{}'.format(i), p_layer, 128, nl=LeakyReLU))
+                    fp_ys.append(FullyConnected('fcfp0-{}'.format(i), p_layer, 128, nl=LeakyReLU))
 
                 q_f = FullyConnected('qf', l, 256, nl=LeakyReLU)
-                pi_y = FullyConnected('fcpi2', pi_y, self.num_actions, nl=tf.identity)
-                bp_y = FullyConnected('fcbp2', bp_y, self.num_actions, nl=tf.identity)
-                if not MIX :
-                    fp_y = FullyConnected('fcfp2', fp_y, self.num_actions, nl=tf.identity)
+
+
+                for i in range(self.num_agents):
+                    pi_ys[i] = FullyConnected('fcpi2-{}'.format(i), pi_ys[i], self.num_actions, nl=tf.identity)
+                    bp_ys[i] = FullyConnected('fcbp2-{}'.format(i), bp_ys[i], self.num_actions, nl=tf.identity)
+                    if not MIX :
+                        fp_ys[i] = FullyConnected('fcfp2-{}'.format(i), fp_ys[i], self.num_actions, nl=tf.identity)
 
         if self.method != 'Dueling':
             Q = FullyConnected('fct', q_f, self.num_actions, nl=tf.identity)
@@ -155,11 +160,17 @@ class Model(DQNModel):
             fp_y = tf.multiply(Q, fp_y, name='mix')
         """
         if MIX :
-            conc = tf.concat([pi_y, bp_y, Q, fp_y], axis=1)
-            fp_y = FullyConnected('fpyconc', conc, self.num_actions, nl=tf.identity)
+            for i in range(self.num_agents):
+                conc = tf.concat([pi_ys[i], bp_ys[i], fp_ys[i], Q], axis=1)
+                fp_ys[i] = FullyConnected('fpyconc-{}'.format(i), conc, self.num_actions, nl=tf.identity)
 
 
-        return tf.identity(Q, name='Qvalue'), tf.identity(pi_y, name='Pivalue'), tf.identity(bp_y, name='Bpvalue'), tf.identity(fp_y, name='Fpvalue')
+        for i in range(self.num_agents):
+            pi_ys[i] = tf.identity(pi_ys[i], name='Pivalue-{}'.format(i))
+            bp_ys[i] = tf.identity(bp_ys[i], name='Bpvalue-{}'.format(i))
+            fp_ys[i] = tf.identity(fp_ys[i], name='Fpvalue-{}'.format(i))
+
+        return tf.identity(Q, name='Qvalue'), pi_ys, bp_ys, fp_ys
 
 def get_config():
     M = Model()
@@ -172,7 +183,8 @@ def get_config():
         init_memory_size=INIT_MEMORY_SIZE,
         init_exploration=INIT_EXP,
         update_frequency=UPDATE_FREQ,
-        history_len=FRAME_HISTORY
+        history_len=FRAME_HISTORY,
+        num_agents=NUM_AGENTS
     )
 
     return TrainConfig(
@@ -212,7 +224,7 @@ if __name__ == '__main__':
     parser.add_argument('--algo', help='algorithm',
                         choices=['DQN', 'Double', 'Dueling'], default='DQN')
     parser.add_argument('--skip', help='act repeat', type=int, required=True)
-    parser.add_argument('--field', help='field type', type=str, choices=['small', 'large'], required=True)
+    parser.add_argument('--field', help='field type', type=str, choices=['small', 'large'], default='large')
     parser.add_argument('--hist_len', help='hist len', type=int, required=True)
     parser.add_argument('--batch_size', help='batch size', type=int, required=True)
     parser.add_argument('--lamb', dest='lamb', type=float, default=1.0)
@@ -226,6 +238,7 @@ if __name__ == '__main__':
     parser.add_argument('--comb', dest='comb', action='store_true')
     parser.add_argument('--freq', dest='freq', type=int, default=4)
     parser.add_argument('--reg', dest='reg', action='store_true')
+    parser.add_argument('--na', dest='na', type=int, default=1)
 
     args = parser.parse_args()
 
@@ -247,14 +260,14 @@ if __name__ == '__main__':
     UPDATE_FREQ = args.freq
     COMB = args.comb
     USE_REG = args.reg
-
+    NUM_AGENTS = args.na
 
     if args.fast:
         LR_RATE = [(60, 4e-4), (100, 2e-4)]
         EXP_RATE = [(0, 1), (10, 0.1), (320, 0.01)]
     else:
         LR_RATE = [(20, 4e-4), (40, 2e-4)]
-        EXP_RATE = [(0, 1), (40, 0.1), (80, 0.01)]
+        EXP_RATE = [(0, 1), (40, 0.1), (320, 0.01)]
 
     # set num_actions
     NUM_ACTIONS = SoccerPlayer().get_action_space().num_actions()
@@ -273,11 +286,11 @@ if __name__ == '__main__':
     else:
         logger.set_logger_dir(
             os.path.join('train_log',
-                'DQNBFPI-SHARE-field-{}-skip-{}-hist-{}-batch-{}-{}-{}-{}-decay-{}-aiskip-{}-{}-{}-{}-{}-{}-{}'.format(
-                args.field, args.skip, args.hist_len, args.batch_size, os.path.basename('soccer').split('.')[0], LAMB,
+                'DQNBFPI-M-SHARE-skip-{}-hist-{}-batch-{}-{}-{}-{}-decay-{}-aiskip-{}-{}-{}-{}-{}-{}-na-{}'.format(
+                args.skip, args.hist_len, args.batch_size, os.path.basename('soccer').split('.')[0], LAMB,
                 'fast' if args.fast else 'slow', args.fp_decay, args.ai_skip, 'sep' if args.sep else '',
-                'full' if args.full else  '', 'cmix' if args.mix else '', 'rnn' if args.rnn else '',
-                'comb' if args.comb else '', 'reg' if args.reg else '')))
+                'full' if args.full else '', 'cmix' if args.mix else '',
+                'comb' if args.comb else '', 'reg' if args.reg else '', args.na)))
         config = get_config()
         if args.load:
             config.session_init = SaverRestore(args.load)
