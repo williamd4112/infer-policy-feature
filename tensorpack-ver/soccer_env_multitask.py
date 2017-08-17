@@ -34,11 +34,11 @@ class SoccerPlayer(RLEnvironment):
     SOCCER_WIDTH = 288
     SOCCER_HEIGHT = 192
 
-    def __init__(self, viz=0, 
-                height_range=(None, None), 
+    def __init__(self, viz=0,
+                height_range=(None, None),
                 field='large', partial=False, radius=2,
-                frame_skip=4, 
-                image_shape=(84, 84), 
+                frame_skip=4,
+                image_shape=(84, 84),
                 nullop_start=30, mode=None, team_size=2, ai_frame_skip=1):
         super(SoccerPlayer, self).__init__()
         self.mode = mode
@@ -68,7 +68,7 @@ class SoccerPlayer(RLEnvironment):
         if self.partial:
             self.radius = radius
             self.player_agent_index = self.env.get_agent_index(self.player_team_name, 0)
- 
+
         self.width, self.height = self.SOCCER_WIDTH, self.SOCCER_HEIGHT
         self.actions = self.env.actions
 
@@ -76,9 +76,10 @@ class SoccerPlayer(RLEnvironment):
         self.nullop_start = nullop_start
         self.height_range = height_range
         self.image_shape = image_shape
-        
+
         self.last_info = {}
         self.agent_actions = ['STAND'] * (self.team_size * 2)
+        self.last_info['agent_actions'] = self._get_computer_actions()
 
         self.current_episode_score = StatCounter()
         self.restart_episode()
@@ -148,7 +149,7 @@ class SoccerPlayer(RLEnvironment):
                 self.last_raw_screen = self._grab_raw_image()
             ret = self.env.take_action(self.env.actions[act])
             if k == 0:
-                self.last_info['agent_actions'] = self._get_computer_actions()     
+                self.last_info['agent_actions'] = self._get_computer_actions()
             r += ret.reward
             if self.env.state.is_terminal():
                 break
@@ -162,4 +163,4 @@ class SoccerPlayer(RLEnvironment):
 
     def get_internal_state(self):
         return self.last_info
-     
+
