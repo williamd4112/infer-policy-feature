@@ -97,7 +97,19 @@ class SoccerPlayer(RLEnvironment):
             action = self.env.state.get_agent_action(index)
             self.agent_actions[self.team_size * 1 + i] = action
         return np.asarray([self.env.actions.index(act if act else 'STAND') for act in self.agent_actions])
-
+    
+    def _set_computer_mode(self, mode):
+        # Collaborator
+        for i in range(1, self.team_size):
+            index = self.env.get_agent_index(self.player_team_name, i)
+            if mode in ['OFFENSIVE', 'DEFENSIVE']:
+                self.env.state.set_agent_mode(index, mode)
+        # Opponent
+        for i in range(self.team_size):
+            index = self.env.get_agent_index(self.computer_team_name, i)
+            if mode in ['OFFENSIVE', 'DEFENSIVE']:
+                self.env.state.set_agent_mode(index, mode)
+   
     def current_state(self):
         ret = self._grab_raw_image()
         ret = cv2.cvtColor(ret, cv2.COLOR_RGB2GRAY)
@@ -113,8 +125,7 @@ class SoccerPlayer(RLEnvironment):
     def restart_episode(self):
         self.current_episode_score.reset()
         self.env.reset()
-        if self.mode in ['OFFENSIVE', 'DEFENSIVE']:
-            self.env.state.set_agent_mode(self.computer_agent_index, self.mode) 
+        self._set_computer_mode(self.mode)
         self.last_raw_screen = self._grab_raw_image()
 
     def action(self, act):
@@ -130,7 +141,7 @@ class SoccerPlayer(RLEnvironment):
                 break
         if self.mode == 'RANDOM':
             modes = ['OFFENSIVE', 'DEFENSIVE']
-            self.env.state.set_agent_mode(self.computer_agent_index, random.choice(modes))
+            self._set_computer_mode(random.choice(modes))
 
         self.current_episode_score.feed(r)
         isOver = self.env.state.is_terminal()
