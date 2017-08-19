@@ -16,7 +16,7 @@ from tensorpack.tfutils import symbolic_functions as symbf
 
 class Model(ModelDesc):
     def __init__(self, image_shape, channel, method, num_actions, gamma, 
-                lr=1e-3, lamb=1.0, keep_state=False, h_size=512, update_step=1, multi_task=False, num_agents=1):
+                lr=1e-3, lamb=1.0, keep_state=False, h_size=512, update_step=1, multi_task=False, num_agents=1, num_lookahead=0, reg=False):
         self.image_shape = image_shape
         self.channel = channel
         self.method = method
@@ -29,6 +29,8 @@ class Model(ModelDesc):
         self.update_step = update_step
         self.multi_task = multi_task
         self.num_agents = num_agents
+        self.num_lookahead = num_lookahead
+        self.reg = reg
 
     def _get_inputs(self):
         # Use a combined state for efficiency.
@@ -40,7 +42,7 @@ class Model(ModelDesc):
                     InputDesc(tf.int64, (None, self.channel + 1), 'action'),
                     InputDesc(tf.float32, (None, self.channel + 1), 'reward'),
                     InputDesc(tf.bool, (None, self.channel + 1), 'isOver'),
-                    InputDesc(tf.int64, (None, self.channel + 1, self.num_agents), 'action_o'),
+                    InputDesc(tf.int64, (None, self.channel + 1 + self.num_lookahead, self.num_agents), 'action_o'),
                     InputDesc(tf.float32, (None, 2, self.h_size), 'q_rnn_state'),
                     InputDesc(tf.float32, (None, 2, self.h_size), 'pi_rnn_state')] 
         else:
@@ -50,7 +52,7 @@ class Model(ModelDesc):
                     InputDesc(tf.int64, (None, self.channel + 1), 'action'),
                     InputDesc(tf.float32, (None, self.channel + 1), 'reward'),
                     InputDesc(tf.bool, (None, self.channel + 1), 'isOver'),
-                    InputDesc(tf.int64, (None, self.channel + 1, self.num_agents), 'action_o')]
+                    InputDesc(tf.int64, (None, self.channel + 1 + self.num_lookahead, self.num_agents), 'action_o')]
 
     @abc.abstractmethod
     def _get_DQN_prediction(self, image):
@@ -67,7 +69,7 @@ class Model(ModelDesc):
         action = tf.slice(action, [0, backward_offset], [-1, self.update_step])
         reward = tf.slice(reward, [0, backward_offset], [-1, self.update_step])
         isOver = tf.slice(isOver, [0, backward_offset], [-1, self.update_step])
-        action_o = tf.slice(action_o, [0, backward_offset, 0], [-1, self.update_step, self.num_agents])
+        action_o = tf.slice(action_o, [0, backward_offset + self.num_lookahead, 0], [-1, self.update_step, self.num_agents])
 
         action = tf.reshape(action, (self.batch_size * self.update_step,))
         reward = tf.reshape(reward, (self.batch_size * self.update_step,))
@@ -123,7 +125,13 @@ class Model(ModelDesc):
         for i, o in enumerate(action_o_one_hots):
             pi_costs.append(tf.nn.softmax_cross_entropy_with_logits(labels=o, logits=pi_value[i]))
         pi_cost = self.lamb * tf.add_n(pi_costs)
-        self.cost = tf.reduce_mean(q_cost + pi_cost)
+
+        if self.reg:
+            reg_coff = tf.stop_gradient(tf.sqrt(1.0 / (tf.reduce_mean(pi_cost) + 1e-9)), name='reg')
+            self.cost = tf.reduce_mean(reg_coff * q_cost + pi_cost)
+            summary.add_moving_summary(reg_coff)
+        else:    
+            self.cost = tf.reduce_mean(q_cost + pi_cost)
 
         summary.add_param_summary(('conv.*/W', ['histogram', 'rms']),
                                   ('fc.*/W', ['histogram', 'rms']))   # monitor all W

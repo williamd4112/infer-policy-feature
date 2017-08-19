@@ -24,9 +24,10 @@ AugmentExperience = namedtuple('AugmentExperience',
 
 
 class AugmentReplayMemory(ReplayMemory):
-    def __init__(self, max_size, state_shape, history_len, num_agents):
+    def __init__(self, max_size, state_shape, history_len, num_agents, num_lookahead):
         super(AugmentReplayMemory, self).__init__(max_size, state_shape, history_len)
         self.num_agents = num_agents
+        self.num_lookahead = num_lookahead
         self.action_o = np.zeros((self.max_size, num_agents), dtype='int32')
 
     def sample(self, idx):
@@ -39,14 +40,19 @@ class AugmentReplayMemory(ReplayMemory):
             reward = self.reward[idx: idx + k]
             action = self.action[idx: idx + k]
             isOver = self.isOver[idx: idx + k]
-            action_o = self.action_o[idx: idx + k]
         else:
             end = idx + k - self._curr_size
             state = self._slice(self.state, idx, end)
             reward = self._slice(self.reward, idx, end)
             action = self._slice(self.action, idx, end)
             isOver = self._slice(self.isOver, idx, end)
-            action_o = self._slice(self.action_o, idx, end)
+
+        k_lookahead = k + self.num_lookahead
+        if idx + k_lookahead <= self._curr_size:
+            action_o = self.action_o[idx: idx + k_lookahead]
+        else:
+            action_o = self._slice(self.action_o, idx, (idx + k_lookahead - self._curr_size))
+
         ret = self._pad_sample(state, reward, action, isOver, action_o)
         return ret
 
@@ -88,7 +94,7 @@ class AugmentExpReplay(ExpReplay, Callback):
                  batch_size,
                  memory_size, init_memory_size,
                  init_exploration,
-                 update_frequency, history_len, h_size=512, keep_state=False, num_agents=1, num_lookahead=1):
+                 update_frequency, history_len, h_size=512, keep_state=False, num_agents=1, num_lookahead=0):
         """
         Args:
             predictor_io_names (tuple of list of str): input/output names to
