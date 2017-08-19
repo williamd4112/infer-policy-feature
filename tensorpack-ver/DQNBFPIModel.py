@@ -15,7 +15,7 @@ from tensorpack.tfutils import symbolic_functions as symbf
 
 
 class Model(ModelDesc):
-    def __init__(self, image_shape, channel, method, num_actions, gamma, lr=1e-3, lamb=1.0, fp_decay=1.0, use_reg=False):
+    def __init__(self, image_shape, channel, method, num_actions, gamma, lr=1e-3, lamb=1.0, fp_decay=1.0, use_reg=False, reg_only_pi=False):
         self.image_shape = image_shape
         self.channel = channel
         self.method = method
@@ -25,6 +25,7 @@ class Model(ModelDesc):
         self.lamb = lamb
         self.fp_decay = fp_decay
         self.use_reg = use_reg
+        self.reg_only_pi = reg_only_pi
 
     def _get_inputs(self):
         # Use a combined state for efficiency.
@@ -97,6 +98,8 @@ class Model(ModelDesc):
         reg_coef = tf.stop_gradient(tf.sqrt(1.0 / avg_cost), name='reg_coef')
 
         if self.use_reg :
+            if self.reg_only_pi:
+                reg_coef = tf.stop_gradient(tf.sqrt(1.0 / tf.reduce_mean(pi_cost)), name='reg_coef')
             self.cost = tf.reduce_mean(reg_coef * q_cost + avg_cost, name='total_cost')
         else :
             self.cost = tf.reduce_mean(q_cost + avg_cost, name='total_cost')

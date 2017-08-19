@@ -54,6 +54,7 @@ METHOD = None
 FIELD = None
 NUM_AGENTS = 1
 USE_REG = False
+RPI = False
 
 def get_player(viz=False, train=False):
     pl = SoccerPlayer(image_shape=IMAGE_SIZE[::-1], viz=viz, frame_skip=ACTION_REPEAT, field=FIELD, ai_frame_skip=AI_SKIP)
@@ -70,7 +71,7 @@ def get_player(viz=False, train=False):
 
 class Model(DQNModel):
     def __init__(self):
-        super(Model, self).__init__(IMAGE_SIZE, FRAME_HISTORY, METHOD, NUM_ACTIONS, NUM_AGENTS, GAMMA, lr=LR, lamb=LAMB, fp_decay=FP_DECAY, use_reg=USE_REG)
+        super(Model, self).__init__(IMAGE_SIZE, FRAME_HISTORY, METHOD, NUM_ACTIONS, NUM_AGENTS, GAMMA, lr=LR, lamb=LAMB, fp_decay=FP_DECAY, use_reg=USE_REG, reg_only_pi=RPI)
 
     def _get_DQN_prediction(self, image):
         """ image: [0,255]"""
@@ -114,8 +115,8 @@ class Model(DQNModel):
             fp_y = FullyConnected('fp-fc0-%d' %i, fp_conc, self.num_actions, nl=tf.identity)
 
             bp_y = tf.identity(bp_y, name='Pivalue-%d' % i)
-            pi_y = tf.identity(bp_y, name='Bpvalue-%d' % i)
-            fp_y = tf.identity(bp_y, name='Fpvalue-%d' % i)
+            pi_y = tf.identity(pi_y, name='Bpvalue-%d' % i)
+            fp_y = tf.identity(fp_y, name='Fpvalue-%d' % i)
 
             bp_ys.append(bp_y)
             pi_ys.append(pi_y)
@@ -186,6 +187,7 @@ if __name__ == '__main__':
     parser.add_argument('--mix', dest='mix', action='store_true')
     parser.add_argument('--freq', dest='freq', type=int, default=4)
     parser.add_argument('--reg', dest='reg', action='store_true')
+    parser.add_argument('--rpi', dest='rpi', action='store_true')
     parser.add_argument('--na', dest='na', type=int, default=1)
 
     args = parser.parse_args()
@@ -206,6 +208,7 @@ if __name__ == '__main__':
     UPDATE_FREQ = args.freq
     USE_REG = args.reg
     NUM_AGENTS = args.na
+    RPI = args.rpi
 
     if args.fast:
         LR_RATE = [(60, 4e-4), (100, 2e-4)]
@@ -231,10 +234,10 @@ if __name__ == '__main__':
     else:
         logger.set_logger_dir(
             os.path.join('train_log',
-                'DQNBFPI-SHARE-COMPACT-field-{}-skip-{}-hist-{}-batch-{}-{}-{}-{}-decay-{}-aiskip-{}-{}-na-{}'.format(
+                'DQNBFPI-SHARE-COMPACT-field-{}-skip-{}-hist-{}-batch-{}-{}-{}-{}-decay-{}-aiskip-{}-{}-na-{}-{}'.format(
                 args.field, args.skip, args.hist_len, args.batch_size, os.path.basename('soccer').split('.')[0], LAMB,
                 'fast' if args.fast else 'slow', args.fp_decay, args.ai_skip,
-                'reg' if args.reg else '', args.na)))
+                'reg' if args.reg else '', args.na, 'rpi' if args.rpi else '')))
         config = get_config()
         if args.load:
             config.session_init = SaverRestore(args.load)
