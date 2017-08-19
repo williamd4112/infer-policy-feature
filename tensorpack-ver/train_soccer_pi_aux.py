@@ -61,9 +61,10 @@ MULTI_TASK = False
 LR_LIST = None
 EPS_LIST = None
 RNN_ACTIVATION = None
+MODE = None
 
 def get_player(viz=False, train=False):
-    pl = SoccerPlayer(image_shape=IMAGE_SIZE[::-1], viz=viz, frame_skip=ACTION_REPEAT, field=FIELD, ai_frame_skip=AI_SKIP, team_size=2 if MULTI_TASK else 1)
+    pl = SoccerPlayer(image_shape=IMAGE_SIZE[::-1], viz=viz, frame_skip=ACTION_REPEAT, field=FIELD, ai_frame_skip=AI_SKIP, team_size=2 if MULTI_TASK else 1, mode=MODE)
     if not train:
         # create a new axis to stack history on
         pl = MapPlayerState(pl, lambda im: im[:, :, np.newaxis])
@@ -250,6 +251,8 @@ if __name__ == '__main__':
                         choices=['play', 'eval', 'train'], default='train')
     parser.add_argument('--algo', help='algorithm',
                         choices=['DQN', 'Double', 'Dueling'], default='DQN')
+    parser.add_argument('--mode', help='mode',
+                        choices=['OFFENSIVE', 'DEFENSIVE', None], default=None)
     parser.add_argument('--cell', help='cell',
                         choices=['gru', 'lstm', None], default=None)
     parser.add_argument('--rnn_activation', help='rnn activation',
@@ -298,7 +301,7 @@ if __name__ == '__main__':
     LR_LIST = args.lr_list
     EPS_LIST = args.eps_list
     RNN_ACTIVATION = args.rnn_activation
-
+    MODE = args.mode
     train_logdir = args.log    
 
     logger.info('USE_RNN = {}, NO_FC = {}, SINGLE_RNN = {}, RNN_HIDDEN = {}, RNN_STEP = {}'.format(USE_RNN, NO_FC, SINGLE_RNN, RNN_HIDDEN, RNN_STEP))
