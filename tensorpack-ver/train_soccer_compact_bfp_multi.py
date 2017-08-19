@@ -89,8 +89,8 @@ class Model(DQNModel):
                 s_l = Conv2D('conv1', s_l, out_channel=64, kernel_shape=4, stride=2)
                 s_l = Conv2D('conv2', s_l, out_channel=64, kernel_shape=3)
 
-                q_l = FullyConnected('qfc0', q_c, 512, nl=LeakyReLU)
-                p_l = FullyConnected('pfc0', p_c, 512, nl=LeakyReLU)
+                q_l = FullyConnected('qfc0', s_l, 512, nl=LeakyReLU)
+                p_l = FullyConnected('pfc0', s_l, 512, nl=LeakyReLU)
 
                 l = tf.multiply(q_l, p_l, name='mul')
 
