@@ -119,11 +119,11 @@ class Model(ModelDesc):
             fp_cost = self.lamb * self.fp_decay * tf.reduce_mean(tf.stack(fp_cost, axis=1), axis=1)
 
         avg_cost = (pi_cost + fp_cost + bp_cost) / 3.0
-        reg_coef = tf.stop_gradient(tf.sqrt(1.0 / avg_cost))
+        reg_coef = tf.stop_gradient(tf.sqrt(1.0 / tf.reduce_mean(avg_cost), name='reg_coef'))
 
         if self.use_reg :
             if self.reg_only_pi :
-                reg_coef = tf.stop_gradient(tf.sqrt(1.0 / pi_cost))
+                reg_coef = tf.stop_gradient(tf.sqrt(1.0 / tf.reduce_mean(pi_cost, name='reg_coef')))
             self.cost = tf.reduce_mean(reg_coef * q_cost + avg_cost, name='total_cost')
         else :
             self.cost = tf.reduce_mean(q_cost + avg_cost, name='total_cost')
@@ -137,7 +137,7 @@ class Model(ModelDesc):
         summary.add_moving_summary(tf.reduce_mean(q_cost, name='q_cost'))
         summary.add_moving_summary(tf.reduce_mean(fp_cost, name='fp_cost'))
         summary.add_moving_summary(tf.reduce_mean(avg_cost, name='avg_cost'))
-        summary.add_moving_summary(tf.reduce_mean(reg_coef, name='reg_coef'))
+        summary.add_moving_summary(reg_coef)
 
         for i in range(self.num_agents):
             pred_c = tf.argmax(pi_values[i], axis=1)
