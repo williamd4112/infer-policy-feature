@@ -34,25 +34,20 @@ class AugmentReplayMemory(ReplayMemory):
         """ return a tuple of (s,r,a,o,a_o),
             where s is of shape STATE_SIZE + (hist_len+1,)"""
         idx = (self._curr_pos + idx) % self._curr_size
-        k = self.history_len + 1
+        k = (self.history_len + self.num_lookahead) + 1
         if idx + k <= self._curr_size:
             state = self.state[idx: idx + k]
             reward = self.reward[idx: idx + k]
             action = self.action[idx: idx + k]
             isOver = self.isOver[idx: idx + k]
+            action_o = self.action_o[idx: idx + k]
         else:
             end = idx + k - self._curr_size
             state = self._slice(self.state, idx, end)
             reward = self._slice(self.reward, idx, end)
             action = self._slice(self.action, idx, end)
             isOver = self._slice(self.isOver, idx, end)
-
-        k_lookahead = k + self.num_lookahead
-        if idx + k_lookahead <= self._curr_size:
-            action_o = self.action_o[idx: idx + k_lookahead]
-        else:
-            action_o = self._slice(self.action_o, idx, (idx + k_lookahead - self._curr_size))
-
+            action_o = self._slice(self.action_o, idx, end)
         ret = self._pad_sample(state, reward, action, isOver, action_o)
         return ret
 
@@ -64,7 +59,7 @@ class AugmentReplayMemory(ReplayMemory):
                 state[:k + 1].fill(0)
                 break
         state = state.transpose(1, 2, 0)
-        return (state, reward, action, isOver, action_o)
+        return (state[:, :, :(self.history_len + 1)], reward[:(self.history_len + 1)], action[:(self.history_len + 1)], isOver[:(self.history_len + 1)], action_o)
 
     def _assign(self, pos, exp):
         self.state[pos] = exp.state

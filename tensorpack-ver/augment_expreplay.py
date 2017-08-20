@@ -88,7 +88,7 @@ class AugmentExpReplay(ExpReplay, Callback):
                  batch_size,
                  memory_size, init_memory_size,
                  init_exploration,
-                 update_frequency, history_len, h_size=512, keep_state=False, num_agents=1, num_lookahead=1):
+                 update_frequency, history_len, h_size=512, keep_state=False, num_agents=1, num_lookahead=0):
         """
         Args:
             predictor_io_names (tuple of list of str): input/output names to
@@ -115,7 +115,7 @@ class AugmentExpReplay(ExpReplay, Callback):
         self.pi_rnn_state = np.zeros([2, self.h_size], dtype=np.float32)
         self.num_lookahead = num_lookahead
 
-        self.mem = AugmentReplayMemory(memory_size, state_shape, history_len, num_agents, num_lookahead)
+        self.mem = AugmentReplayMemory(memory_size, state_shape, history_len, num_agents)
 
     def _populate_exp(self):
         """ populate a transition by epsilon-greedy"""
