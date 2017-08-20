@@ -47,6 +47,7 @@ LR = 1e-3
 EXP_RATE = None
 LR_RATE = None
 AI_SKIP = 2
+ADD_UP = False
 
 
 NUM_ACTIONS = None
@@ -71,7 +72,7 @@ def get_player(viz=False, train=False):
 
 class Model(DQNModel):
     def __init__(self):
-        super(Model, self).__init__(IMAGE_SIZE, FRAME_HISTORY, METHOD, NUM_ACTIONS, NUM_AGENTS, GAMMA, lr=LR, lamb=LAMB, fp_decay=FP_DECAY, use_reg=USE_REG, reg_only_pi=RPI)
+        super(Model, self).__init__(IMAGE_SIZE, FRAME_HISTORY, METHOD, NUM_ACTIONS, NUM_AGENTS, GAMMA, lr=LR, lamb=LAMB, fp_decay=FP_DECAY, use_reg=USE_REG, reg_only_pi=RPI, add_up=ADD_UP)
 
     def _get_DQN_prediction(self, image):
         """ image: [0,255]"""
@@ -160,7 +161,8 @@ def get_config():
             HumanHyperParamSetter('learning_rate'),
         ],
         model=M,
-        steps_per_epoch=STEPS_PER_EPOCH,
+        #steps_per_epoch=STEPS_PER_EPOCH,
+        steps_per_epoch=2500,
         max_epoch=10000,
         # run the simulator on a separate GPU if available
         predict_tower=[1] if get_nr_gpu() > 1 else [0],
@@ -188,6 +190,7 @@ if __name__ == '__main__':
     parser.add_argument('--freq', dest='freq', type=int, default=4)
     parser.add_argument('--reg', dest='reg', action='store_true')
     parser.add_argument('--rpi', dest='rpi', action='store_true')
+    parser.add_argument('--addup', dest='addup', action='store_true')
     parser.add_argument('--na', dest='na', type=int, default=1)
 
     args = parser.parse_args()
@@ -209,13 +212,14 @@ if __name__ == '__main__':
     USE_REG = args.reg
     NUM_AGENTS = args.na
     RPI = args.rpi
+    ADD_UP =args.addup
 
     if args.fast:
-        LR_RATE = [(60, 4e-4), (100, 2e-4)]
-        EXP_RATE = [(0, 1), (10, 0.1), (320, 0.01)]
+        LR_RATE = [(600, 4e-4), (1000, 2e-4)]
+        EXP_RATE = [(0, 1), (100, 0.1), (3200, 0.01)]
     else:
-        LR_RATE = [(20, 4e-4), (40, 2e-4)]
-        EXP_RATE = [(0, 1), (40, 0.1), (320, 0.01)]
+        LR_RATE = [(200, 4e-4), (400, 2e-4)]
+        EXP_RATE = [(0, 1), (400, 0.1), (3200, 0.01)]
 
     # set num_actions
     NUM_ACTIONS = SoccerPlayer().get_action_space().num_actions()
@@ -234,10 +238,11 @@ if __name__ == '__main__':
     else:
         logger.set_logger_dir(
             os.path.join('train_log',
-                'DQNBFPI-SHARE-COMPACT-field-{}-skip-{}-hist-{}-batch-{}-{}-{}-{}-decay-{}-aiskip-{}-{}-na-{}-{}'.format(
+                'DQNBFPI-SHARE-COMPACT-field-{}-skip-{}-hist-{}-batch-{}-{}-{}-{}-decay-{}-aiskip-{}-{}-na-{}-{}{}'.format(
                 args.field, args.skip, args.hist_len, args.batch_size, os.path.basename('soccer').split('.')[0], LAMB,
                 'fast' if args.fast else 'slow', args.fp_decay, args.ai_skip,
-                'reg' if args.reg else '', args.na, 'rpi' if args.rpi else '')))
+                'reg' if args.reg else '', args.na, 'rpi' if args.rpi else '',
+                'addup' if args.addup else '')))
         config = get_config()
         if args.load:
             config.session_init = SaverRestore(args.load)
