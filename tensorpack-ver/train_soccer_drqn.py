@@ -91,7 +91,7 @@ class Model(DQNModel):
                  # .Conv2D('conv3', out_channel=64, kernel_shape=3)
 
                  #.FullyConnected('fc0', 512, nl=LeakyReLU)())
-            l = symbf.flatten(l)
+            l = symbf.batch_flatten(l)
             h_size = 512
             l = tf.reshape(l, [self.batch_size, self.channel, h_size])
 
