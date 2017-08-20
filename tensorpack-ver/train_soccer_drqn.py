@@ -61,7 +61,6 @@ def get_player(viz=False, train=False):
     pl = LimitLengthPlayer(pl, 30000)
     return pl
 
-
 class Model(DQNModel):
     def __init__(self):
         super(Model, self).__init__(IMAGE_SIZE, FRAME_HISTORY, METHOD, NUM_ACTIONS, GAMMA, LR)
@@ -92,9 +91,8 @@ class Model(DQNModel):
 
                  #.FullyConnected('fc0', 512, nl=LeakyReLU)())
             l = symbf.batch_flatten(l)
+            l = tf.reshape(l, [self.batch_size, self.channel, 11*11*64])
             h_size = 512
-            l = tf.reshape(l, [self.batch_size, self.channel, h_size])
-
             cell = tf.nn.rnn_cell.LSTMCell(num_units=h_size, 
                                         state_is_tuple=True)
             self.state_in = None
