@@ -34,7 +34,7 @@ class AugmentReplayMemory(ReplayMemory):
         """ return a tuple of (s,r,a,o,a_o),
             where s is of shape STATE_SIZE + (hist_len+1,)"""
         idx = (self._curr_pos + idx) % self._curr_size
-        k = (self.history_len + self.num_lookahead) + 1
+        k = self.history_len + 1 + self.num_lookahead
         if idx + k <= self._curr_size:
             state = self.state[idx: idx + k]
             reward = self.reward[idx: idx + k]
@@ -59,7 +59,7 @@ class AugmentReplayMemory(ReplayMemory):
                 state[:k + 1].fill(0)
                 break
         state = state.transpose(1, 2, 0)
-        return (state[:, :, :(self.history_len + 1)], reward[:(self.history_len + 1)], action[:(self.history_len + 1)], isOver[:(self.history_len + 1)], action_o)
+        return (state, reward, action, isOver, action_o)
 
     def _assign(self, pos, exp):
         self.state[pos] = exp.state
@@ -110,12 +110,12 @@ class AugmentExpReplay(ExpReplay, Callback):
                 update_frequency,
                 history_len)
         self.num_agents = num_agents
+        self.num_lookahead = num_lookahead
         self.keep_state = keep_state
         self.h_size = h_size
         self.q_rnn_state = np.zeros([2, self.h_size], dtype=np.float32)
         self.pi_rnn_state = np.zeros([2, self.h_size], dtype=np.float32)
-        self.num_lookahead = num_lookahead
-
+       
         self.mem = AugmentReplayMemory(memory_size, state_shape, history_len, num_agents, num_lookahead)
 
     def _populate_exp(self):
@@ -149,6 +149,20 @@ class AugmentExpReplay(ExpReplay, Callback):
         if isOver and self.keep_state:
             self.q_rnn_state.fill(0)
             self.pi_rnn_state.fill(0)
+
+    def get_data(self):
+        # wait for memory to be initialized
+        self._init_memory_flag.wait()
+
+        while True:
+            idx = self.rng.randint(
+                self._populate_job_queue.maxsize * self.update_frequency,
+                len(self.mem) - (self.history_len + self.num_lookahead) - 1,
+                size=self.batch_size)
+            batch_exp = [self.mem.sample(i) for i in idx]
+
+            yield self._process_batch(batch_exp)
+            self._populate_job_queue.put(1)
 
     def _process_batch(self, batch_exp):
         state = np.asarray([e[0] for e in batch_exp], dtype='uint8')

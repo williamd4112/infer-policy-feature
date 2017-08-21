@@ -22,7 +22,7 @@ from tensorpack.tfutils import symbolic_functions as symbf
 from tensorpack.RL import *
 import tensorflow as tf
 
-from DQNPIModel import Model as DQNModel
+from DQNPIModel_lookahead import Model as DQNModel
 import common
 from common import play_model, Evaluator, eval_model_multithread
 from soccer_env import SoccerPlayer
@@ -341,7 +341,7 @@ if __name__ == '__main__':
             eval_model_multithread(cfg, EVAL_EPISODE, get_player)
     else:
         logger.set_logger_dir(
-            os.path.join(train_logdir, '{}-aux-lookahead-{}-field-{}-skip-{}-ai_skip-{}-hist-{}-batch-{}-lr-{}-{}-eps-{}-lamb-{}-update-{}-reg-{}-{}'.format(
+            os.path.join(train_logdir, '{}-aux-lookahead-single-{}-field-{}-skip-{}-ai_skip-{}-hist-{}-batch-{}-lr-{}-{}-eps-{}-lamb-{}-update-{}-reg-{}-{}'.format(
                 MODEL_NAME, args.num_lookahead, args.field, args.skip, args.ai_skip, args.hist_len, args.batch_size, args.lr, args.lr_list, args.eps_list, args.lamb, UPDATE_TARGET_STEP, USE_REG, os.path.basename('soccer').split('.')[0])))
         config = get_config()
         if args.load:

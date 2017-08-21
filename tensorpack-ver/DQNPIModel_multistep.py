@@ -37,22 +37,22 @@ class Model(ModelDesc):
         # The first h channels are the current state, and the last h channels are the next state.
         if self.keep_state:
             return [InputDesc(tf.uint8,
-                          (None,) + self.image_shape + (self.channel + 1,),
+                          (None,) + self.image_shape + (self.channel + self.num_lookahead + 1,),
                           'comb_state'),
-                    InputDesc(tf.int64, (None, self.channel + 1), 'action'),
-                    InputDesc(tf.float32, (None, self.channel + 1), 'reward'),
-                    InputDesc(tf.bool, (None, self.channel + 1), 'isOver'),
-                    InputDesc(tf.int64, (None, self.channel + 1 + self.num_lookahead, self.num_agents), 'action_o'),
+                    InputDesc(tf.int64, (None, (self.channel + self.num_lookahead) + 1), 'action'),
+                    InputDesc(tf.float32, (None, (self.channel + self.num_lookahead) + 1), 'reward'),
+                    InputDesc(tf.bool, (None, (self.channel + self.num_lookahead) + 1), 'isOver'),
+                    InputDesc(tf.int64, (None, (self.channel + self.num_lookahead + 1), self.num_agents), 'action_o'),
                     InputDesc(tf.float32, (None, 2, self.h_size), 'q_rnn_state'),
                     InputDesc(tf.float32, (None, 2, self.h_size), 'pi_rnn_state')] 
         else:
             return [InputDesc(tf.uint8,
-                              (None,) + self.image_shape + (self.channel + 1,),
+                              (None,) + self.image_shape + (self.channel + self.num_lookahead + 1,),
                               'comb_state'),
-                    InputDesc(tf.int64, (None, self.channel + 1), 'action'),
-                    InputDesc(tf.float32, (None, self.channel + 1), 'reward'),
-                    InputDesc(tf.bool, (None, self.channel + 1), 'isOver'),
-                    InputDesc(tf.int64, (None, self.channel + 1 + self.num_lookahead, self.num_agents), 'action_o')]
+                    InputDesc(tf.int64, (None, (self.channel + self.num_lookahead) + 1), 'action'),
+                    InputDesc(tf.float32, (None, (self.channel + self.num_lookahead) + 1), 'reward'),
+                    InputDesc(tf.bool, (None, (self.channel + self.num_lookahead) + 1), 'isOver'),
+                    InputDesc(tf.int64, (None, (self.channel + self.num_lookahead) + 1, self.num_agents), 'action_o')]
 
     @abc.abstractmethod
     def _get_DQN_prediction(self, image):
@@ -69,7 +69,7 @@ class Model(ModelDesc):
         action = tf.slice(action, [0, backward_offset], [-1, self.update_step])
         reward = tf.slice(reward, [0, backward_offset], [-1, self.update_step])
         isOver = tf.slice(isOver, [0, backward_offset], [-1, self.update_step])
-        action_o = tf.slice(action_o, [0, backward_offset, 0], [-1, self.update_step + self.num_lookahead, self.num_agents])
+        action_o = tf.slice(action_o, [0, backward_offset, 0], [-1, (self.update_step + self.num_lookahead), self.num_agents])
         
         action = tf.reshape(action, (self.batch_size * self.update_step,))
         reward = tf.reshape(reward, (self.batch_size * self.update_step,))

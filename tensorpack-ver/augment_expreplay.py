@@ -88,7 +88,7 @@ class AugmentExpReplay(ExpReplay, Callback):
                  batch_size,
                  memory_size, init_memory_size,
                  init_exploration,
-                 update_frequency, history_len, h_size=512, keep_state=False, num_agents=1, num_lookahead=0):
+                 update_frequency, history_len, h_size=512, keep_state=False, num_agents=1):
         """
         Args:
             predictor_io_names (tuple of list of str): input/output names to
@@ -113,7 +113,6 @@ class AugmentExpReplay(ExpReplay, Callback):
         self.h_size = h_size
         self.q_rnn_state = np.zeros([2, self.h_size], dtype=np.float32)
         self.pi_rnn_state = np.zeros([2, self.h_size], dtype=np.float32)
-        self.num_lookahead = num_lookahead
 
         self.mem = AugmentReplayMemory(memory_size, state_shape, history_len, num_agents)
 

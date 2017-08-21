@@ -16,7 +16,7 @@ from tensorpack.tfutils import symbolic_functions as symbf
 
 class Model(ModelDesc):
     def __init__(self, image_shape, channel, method, num_actions, gamma, 
-                lr=1e-3, lamb=1.0, keep_state=False, h_size=512, update_step=1, multi_task=False, num_agents=1, reg=False):
+                lr=1e-3, lamb=1.0, keep_state=False, h_size=512, update_step=1, multi_task=False, num_agents=1, num_lookahead=0, reg=False):
         self.image_shape = image_shape
         self.channel = channel
         self.method = method
@@ -37,22 +37,22 @@ class Model(ModelDesc):
         # The first h channels are the current state, and the last h channels are the next state.
         if self.keep_state:
             return [InputDesc(tf.uint8,
-                          (None,) + self.image_shape + (self.channel + 1,),
+                          (None,) + self.image_shape + (self.channel + self.num_lookahead + 1,),
                           'comb_state'),
-                    InputDesc(tf.int64, (None, self.channel + 1), 'action'),
-                    InputDesc(tf.float32, (None, self.channel + 1), 'reward'),
-                    InputDesc(tf.bool, (None, self.channel + 1), 'isOver'),
-                    InputDesc(tf.int64, (None, self.channel + 1, self.num_agents), 'action_o'),
+                    InputDesc(tf.int64, (None, (self.channel + self.num_lookahead) + 1), 'action'),
+                    InputDesc(tf.float32, (None, (self.channel + self.num_lookahead) + 1), 'reward'),
+                    InputDesc(tf.bool, (None, (self.channel + self.num_lookahead) + 1), 'isOver'),
+                    InputDesc(tf.int64, (None, (self.channel + self.num_lookahead + 1), self.num_agents), 'action_o'),
                     InputDesc(tf.float32, (None, 2, self.h_size), 'q_rnn_state'),
                     InputDesc(tf.float32, (None, 2, self.h_size), 'pi_rnn_state')] 
         else:
             return [InputDesc(tf.uint8,
-                              (None,) + self.image_shape + (self.channel + 1,),
+                              (None,) + self.image_shape + (self.channel + self.num_lookahead + 1,),
                               'comb_state'),
-                    InputDesc(tf.int64, (None, self.channel + 1), 'action'),
-                    InputDesc(tf.float32, (None, self.channel + 1), 'reward'),
-                    InputDesc(tf.bool, (None, self.channel + 1), 'isOver'),
-                    InputDesc(tf.int64, (None, self.channel + 1, self.num_agents), 'action_o')]
+                    InputDesc(tf.int64, (None, (self.channel + self.num_lookahead) + 1), 'action'),
+                    InputDesc(tf.float32, (None, (self.channel + self.num_lookahead) + 1), 'reward'),
+                    InputDesc(tf.bool, (None, (self.channel + self.num_lookahead) + 1), 'isOver'),
+                    InputDesc(tf.int64, (None, (self.channel + self.num_lookahead) + 1, self.num_agents), 'action_o')]
 
     @abc.abstractmethod
     def _get_DQN_prediction(self, image):
@@ -64,21 +64,21 @@ class Model(ModelDesc):
         else:
             comb_state, action, reward, isOver, action_o = inputs
         self.batch_size = tf.shape(comb_state)[0]
-
+        
         backward_offset = ((self.channel) - self.update_step)
         action = tf.slice(action, [0, backward_offset], [-1, self.update_step])
         reward = tf.slice(reward, [0, backward_offset], [-1, self.update_step])
         isOver = tf.slice(isOver, [0, backward_offset], [-1, self.update_step])
-        action_o = tf.slice(action_o, [0, backward_offset, 0], [-1, self.update_step, self.num_agents])
-
+        action_o = tf.slice(action_o, [0, backward_offset + self.num_lookahead, 0], [-1, (self.update_step), self.num_agents])
+        
         action = tf.reshape(action, (self.batch_size * self.update_step,))
         reward = tf.reshape(reward, (self.batch_size * self.update_step,))
         isOver = tf.reshape(isOver, (self.batch_size * self.update_step,))
-        action_o = tf.reshape(action_o, (self.batch_size * self.update_step, self.num_agents))
-
+        action_o = tf.reshape(action_o, (self.batch_size * (self.update_step), self.num_agents))
+        
         comb_state = tf.cast(comb_state, tf.float32)
         state = tf.slice(comb_state, [0, 0, 0, 0], [-1, -1, -1, self.channel], name='state')
-    
+        
         if self.keep_state:
             self.q_rnn_state = tf.identity(pi_rnn_state, name='q_rnn_state_in')
             self.pi_rnn_state = tf.identity(pi_rnn_state, name='pi_rnn_state_in')
@@ -128,10 +128,14 @@ class Model(ModelDesc):
 
         if self.reg:
             reg_coff = tf.stop_gradient(tf.sqrt(1.0 / (tf.reduce_mean(pi_cost) + 1e-9)), name='reg')
-            self.cost = tf.reduce_mean(reg_coff * q_cost + pi_cost)
             summary.add_moving_summary(reg_coff)
-        else:    
-            self.cost = tf.reduce_mean(q_cost + pi_cost)
+        else:
+            reg_coff = 1.0
+
+        if self.num_lookahead > 0:
+            self.cost = tf.reduce_mean(reg_coff * q_cost) + tf.reduce_mean(pi_cost)
+        else:
+            self.cost = tf.reduce_mean(reg_coff * q_cost + pi_cost)
 
         summary.add_param_summary(('conv.*/W', ['histogram', 'rms']),
                                   ('fc.*/W', ['histogram', 'rms']))   # monitor all W
@@ -142,7 +146,7 @@ class Model(ModelDesc):
         for i, o_t in enumerate(action_os):
             pred = tf.argmax(pi_value[i], axis=1)
             summary.add_moving_summary(tf.contrib.metrics.accuracy(pred, o_t, name='acc-%d' % i))
-
+ 
 
     def _get_optimizer(self):
         lr = symbf.get_scalar_var('learning_rate', self.lr, summary=True)
