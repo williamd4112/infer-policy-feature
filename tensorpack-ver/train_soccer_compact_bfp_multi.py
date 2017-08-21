@@ -56,6 +56,7 @@ FIELD = None
 NUM_AGENTS = 1
 USE_REG = False
 RPI = False
+NMX = False
 
 def get_player(viz=False, train=False):
     pl = SoccerPlayer(image_shape=IMAGE_SIZE[::-1], viz=viz, frame_skip=ACTION_REPEAT, field=FIELD, ai_frame_skip=AI_SKIP)
@@ -112,8 +113,11 @@ class Model(DQNModel):
         for i in range(self.num_agents):
             bp_y = FullyConnected('bp-fc0-%d' % i, p_l, self.num_actions, nl=tf.identity)
             pi_y = FullyConnected('pi-fc0-%d' % i, p_l, self.num_actions, nl=tf.identity)
-            fp_conc = tf.concat([Q, bp_y, pi_y, p_l], axis=1)
-            fp_y = FullyConnected('fp-fc0-%d' %i, fp_conc, self.num_actions, nl=tf.identity)
+            if not NMX:
+                fp_conc = tf.concat([Q, bp_y, pi_y, p_l], axis=1)
+                fp_y = FullyConnected('fp-fc0-%d' %i, fp_conc, self.num_actions, nl=tf.identity)
+            else :
+                fp_y = FullyConnected('fp-fc0-%d' %i, p_l, self.num_actions, nl=tf.identity)
 
             bp_y = tf.identity(bp_y, name='Pivalue-%d' % i)
             pi_y = tf.identity(pi_y, name='Bpvalue-%d' % i)
@@ -161,8 +165,7 @@ def get_config():
             HumanHyperParamSetter('learning_rate'),
         ],
         model=M,
-        #steps_per_epoch=STEPS_PER_EPOCH,
-        steps_per_epoch=2500,
+        steps_per_epoch=STEPS_PER_EPOCH,
         max_epoch=10000,
         # run the simulator on a separate GPU if available
         predict_tower=[1] if get_nr_gpu() > 1 else [0],
@@ -191,6 +194,7 @@ if __name__ == '__main__':
     parser.add_argument('--reg', dest='reg', action='store_true')
     parser.add_argument('--rpi', dest='rpi', action='store_true')
     parser.add_argument('--addup', dest='addup', action='store_true')
+    parser.add_argument('--nmx', dest='nmx', action='store_true')
     parser.add_argument('--na', dest='na', type=int, default=1)
 
     args = parser.parse_args()
@@ -212,14 +216,15 @@ if __name__ == '__main__':
     USE_REG = args.reg
     NUM_AGENTS = args.na
     RPI = args.rpi
+    NMX = args.nmx
     ADD_UP =args.addup
 
     if args.fast:
-        LR_RATE = [(600, 4e-4), (1000, 2e-4)]
-        EXP_RATE = [(0, 1), (100, 0.1), (3200, 0.01)]
+        LR_RATE = [(60, 4e-4), (100, 2e-4)]
+        EXP_RATE = [(0, 1), (10, 0.1), (320, 0.01)]
     else:
-        LR_RATE = [(200, 4e-4), (400, 2e-4)]
-        EXP_RATE = [(0, 1), (400, 0.1), (3200, 0.01)]
+        LR_RATE = [(20, 4e-4), (40, 2e-4)]
+        EXP_RATE = [(0, 1), (40, 0.1), (320, 0.01)]
 
     # set num_actions
     NUM_ACTIONS = SoccerPlayer().get_action_space().num_actions()
@@ -238,11 +243,11 @@ if __name__ == '__main__':
     else:
         logger.set_logger_dir(
             os.path.join('train_log',
-                'DQNBFPI-SHARE-COMPACT-field-{}-skip-{}-hist-{}-batch-{}-{}-{}-{}-decay-{}-aiskip-{}-{}-na-{}-{}{}'.format(
+                'DQNBFPI-SHARE-COMPACT-field-{}-skip-{}-hist-{}-batch-{}-{}-{}-{}-decay-{}-aiskip-{}-{}-na-{}-{}{}{}'.format(
                 args.field, args.skip, args.hist_len, args.batch_size, os.path.basename('soccer').split('.')[0], LAMB,
                 'fast' if args.fast else 'slow', args.fp_decay, args.ai_skip,
                 'reg' if args.reg else '', args.na, 'rpi' if args.rpi else '',
-                'addup' if args.addup else '')))
+                'addup' if args.addup else '', 'nmx' if args.nmx else '')))
         config = get_config()
         if args.load:
             config.session_init = SaverRestore(args.load)
