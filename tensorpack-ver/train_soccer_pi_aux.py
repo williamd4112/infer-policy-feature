@@ -254,7 +254,7 @@ if __name__ == '__main__':
     parser.add_argument('--algo', help='algorithm',
                         choices=['DQN', 'Double', 'Dueling'], default='DQN')
     parser.add_argument('--mode', help='mode',
-                        choices=['OFFENSIVE', 'DEFENSIVE', None], default=None)
+                        type=str, default=None)
     parser.add_argument('--cell', help='cell',
                         choices=['gru', 'lstm', None], default=None)
     parser.add_argument('--rnn_activation', help='rnn activation',
@@ -349,8 +349,8 @@ if __name__ == '__main__':
             eval_model_multithread(cfg, EVAL_EPISODE, get_player)
     else:
         logger.set_logger_dir(
-            os.path.join(train_logdir, '{}-aux-field-{}-skip-{}-ai_skip-{}-hist-{}-batch-{}-lr-{}-{}-eps-{}-lamb-{}-update-{}-{}'.format(
-                MODEL_NAME, args.field, args.skip, args.ai_skip, args.hist_len, args.batch_size, args.lr, args.lr_list, args.eps_list, args.lamb, UPDATE_TARGET_STEP, os.path.basename('soccer').split('.')[0])))
+            os.path.join(train_logdir, '{}-aux-field-{}-skip-{}-ai_skip-{}-hist-{}-batch-{}-lr-{}-{}-eps-{}-lamb-{}-update-{}-reg-{}-{}'.format(
+                MODEL_NAME, args.field, args.skip, args.ai_skip, args.hist_len, args.batch_size, args.lr, args.lr_list, args.eps_list, args.lamb, UPDATE_TARGET_STEP, REG, os.path.basename('soccer').split('.')[0])))
         config = get_config()
         if args.load:
             config.session_init = SaverRestore(args.load)

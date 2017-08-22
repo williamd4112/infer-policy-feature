@@ -29,7 +29,6 @@ class Model(ModelDesc):
         self.update_step = update_step
         self.multi_task = multi_task
         self.num_agents = num_agents
-        self.num_lookahead = num_lookahead
         self.reg = reg
 
         assert mt_type in ['all', 'coop-only', 'opponent-only']

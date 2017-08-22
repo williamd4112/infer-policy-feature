@@ -40,7 +40,14 @@ class SoccerPlayer(RLEnvironment):
                 image_shape=(84, 84), 
                 mode=None, team_size=1, ai_frame_skip=1):
         super(SoccerPlayer, self).__init__()
-        self.mode = mode
+        
+        if mode != None:
+            if team_size > 1:
+                self.mode = mode.split(',')
+            else:
+                self.mode = [ mode ]
+        else:
+            self.mode = mode
         self.field = field
         self.partial = partial
         self.viz = viz
@@ -99,16 +106,18 @@ class SoccerPlayer(RLEnvironment):
         return np.asarray([self.env.actions.index(act if act else 'STAND') for act in self.agent_actions])
     
     def _set_computer_mode(self, mode):
+        if mode == None:
+            return
         # Collaborator
         for i in range(1, self.team_size):
             index = self.env.get_agent_index(self.player_team_name, i)
-            if mode in ['OFFENSIVE', 'DEFENSIVE']:
-                self.env.state.set_agent_mode(index, mode)
+            m = mode[self.team_size * 0 + i - 1]
+            self.env.state.set_agent_mode(index, m)
         # Opponent
         for i in range(self.team_size):
             index = self.env.get_agent_index(self.computer_team_name, i)
-            if mode in ['OFFENSIVE', 'DEFENSIVE']:
-                self.env.state.set_agent_mode(index, mode)
+            m = mode[self.team_size * 1 + i - 1]
+            self.env.state.set_agent_mode(index, m)
    
     def current_state(self):
         ret = self._grab_raw_image()
@@ -139,10 +148,6 @@ class SoccerPlayer(RLEnvironment):
             r += ret.reward
             if self.env.state.is_terminal():
                 break
-        if self.mode == 'RANDOM':
-            modes = ['OFFENSIVE', 'DEFENSIVE']
-            self._set_computer_mode(random.choice(modes))
-
         self.current_episode_score.feed(r)
         isOver = self.env.state.is_terminal()
         if isOver:
