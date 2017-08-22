@@ -62,6 +62,8 @@ LR_LIST = None
 EPS_LIST = None
 RNN_ACTIVATION = None
 MODE = None
+MULTI_TASK_MODE = None
+REG = None
 
 def get_player(viz=False, train=False):
     pl = SoccerPlayer(image_shape=IMAGE_SIZE[::-1], viz=viz, frame_skip=ACTION_REPEAT, field=FIELD, ai_frame_skip=AI_SKIP, team_size=2 if MULTI_TASK else 1, mode=MODE)
@@ -94,7 +96,7 @@ def get_rnn_cell():
 class Model(DQNModel):
     def __init__(self):
         super(Model, self).__init__(IMAGE_SIZE, FRAME_HISTORY, METHOD, 
-            NUM_ACTIONS, GAMMA, LR, LAMB, KEEP_STATE, RNN_HIDDEN, RNN_STEP, MULTI_TASK, 3 if MULTI_TASK else 1)
+            NUM_ACTIONS, GAMMA, LR, LAMB, KEEP_STATE, RNN_HIDDEN, RNN_STEP, MULTI_TASK, 3 if MULTI_TASK else 1, REG, MULTI_TASK_MODE)
     
     def get_rnn_init_state(self, cell, name):
         if self.keep_state:
@@ -257,6 +259,8 @@ if __name__ == '__main__':
                         choices=['gru', 'lstm', None], default=None)
     parser.add_argument('--rnn_activation', help='rnn activation',
                         choices=['relu', 'leaky-relu', None], default=None)
+    parser.add_argument('--mt_type', help='multi-task type',
+                        choices=['coop-only', 'opponent-only', 'all'], default='all')
     parser.add_argument('--mt', help='2vs2', type=int, required=True)
     parser.add_argument('--skip', help='act repeat', type=int, required=True)
     parser.add_argument('--ai_skip', help='ai act repeat', type=int, required=True)
@@ -275,6 +279,7 @@ if __name__ == '__main__':
     parser.add_argument('--update_target_step', help='target update step', type=int, default=10000)
     parser.add_argument('--lr_list', help='lr schedule', type=str, default='600:4e-4,1000:2e-4')
     parser.add_argument('--eps_list', help='eps schedule', type=str, default='100:0.1,3200:0.01')
+    parser.add_argument('--reg', help='reg', type=int, required=True)
     args = parser.parse_args()
 
     if args.gpu:
@@ -289,6 +294,7 @@ if __name__ == '__main__':
     AI_SKIP = args.ai_skip
     LAMB = args.lamb
     MULTI_TASK = bool(args.mt)
+    MULTI_TASK_MODE = args.mt_type
     USE_RNN = bool(int(args.rnn))
     SINGLE_RNN = bool(args.single_rnn)
     RNN_CELL = args.cell
@@ -302,6 +308,7 @@ if __name__ == '__main__':
     EPS_LIST = args.eps_list
     RNN_ACTIVATION = args.rnn_activation
     MODE = args.mode
+    REG = bool(args.reg)
     train_logdir = args.log    
 
     logger.info('USE_RNN = {}, NO_FC = {}, SINGLE_RNN = {}, RNN_HIDDEN = {}, RNN_STEP = {}'.format(USE_RNN, NO_FC, SINGLE_RNN, RNN_HIDDEN, RNN_STEP))
@@ -313,8 +320,12 @@ if __name__ == '__main__':
     else:
         input_names=['state']
         output_names=['Qvalue']
+    
+    if MULTI_TASK:
+        scenario = 'MT-%s' % MULTI_TASK_MODE
+    else:
+        scenario = 'ST'
 
-    scenario = 'MT' if MULTI_TASK else 'ST'
     if USE_RNN:
         MODEL_NAME = '%s-%s-RPI-activation-%s-%d-%d-step-%d-keep-%s-nofc-%s-single-%s-%s' % (scenario, args.algo, RNN_ACTIVATION, FC_HIDDEN, RNN_HIDDEN, RNN_STEP, KEEP_STATE, NO_FC, SINGLE_RNN, RNN_CELL)
         if NO_FC:

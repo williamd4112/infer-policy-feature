@@ -16,7 +16,7 @@ from tensorpack.tfutils import symbolic_functions as symbf
 
 class Model(ModelDesc):
     def __init__(self, image_shape, channel, method, num_actions, gamma, 
-                lr=1e-3, lamb=1.0, keep_state=False, h_size=512, update_step=1, multi_task=False, num_agents=1, reg=False):
+                lr=1e-3, lamb=1.0, keep_state=False, h_size=512, update_step=1, multi_task=False, num_agents=1, reg=False, mt_type='all'):
         self.image_shape = image_shape
         self.channel = channel
         self.method = method
@@ -31,6 +31,9 @@ class Model(ModelDesc):
         self.num_agents = num_agents
         self.num_lookahead = num_lookahead
         self.reg = reg
+
+        assert mt_type in ['all', 'coop-only', 'opponent-only']
+        self.mt_type = mt_type
 
     def _get_inputs(self):
         # Use a combined state for efficiency.
@@ -123,7 +126,14 @@ class Model(ModelDesc):
             action_o_one_hots.append(tf.one_hot(o, self.num_actions, 1.0, 0.0))
         pi_costs = []
         for i, o in enumerate(action_o_one_hots):
-            pi_costs.append(tf.nn.softmax_cross_entropy_with_logits(labels=o, logits=pi_value[i]))
+            scale = 1.0
+            # Coop-only: disable opponent loss
+            if self.mt_type == 'coop-only' and i > 0:
+                scale = 0.0
+            # Opponent-only: disable collaborator loss
+            if self.mt_type == 'opponent-only' and i == 0:
+                scale = 0.0
+            pi_costs.append(scale * tf.nn.softmax_cross_entropy_with_logits(labels=o, logits=pi_value[i]))
         pi_cost = self.lamb * tf.add_n(pi_costs)
 
         if self.reg:
