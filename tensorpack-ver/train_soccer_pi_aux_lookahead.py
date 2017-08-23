@@ -63,9 +63,10 @@ EPS_LIST = None
 RNN_ACTIVATION = None
 NUM_LOOKAHEAD = None
 USE_REG = False
+MODE = None
 
 def get_player(viz=False, train=False):
-    pl = SoccerPlayer(image_shape=IMAGE_SIZE[::-1], viz=viz, frame_skip=ACTION_REPEAT, field=FIELD, ai_frame_skip=AI_SKIP, team_size=2 if MULTI_TASK else 1)
+    pl = SoccerPlayer(image_shape=IMAGE_SIZE[::-1], viz=viz, frame_skip=ACTION_REPEAT, field=FIELD, ai_frame_skip=AI_SKIP, team_size=2 if MULTI_TASK else 1, mode=MODE)
     if not train:
         # create a new axis to stack history on
         pl = MapPlayerState(pl, lambda im: im[:, :, np.newaxis])
@@ -258,6 +259,7 @@ if __name__ == '__main__':
     parser.add_argument('--rnn_activation', help='rnn activation',
                         choices=['relu', 'leaky-relu', None], default=None)
     parser.add_argument('--mt', help='2vs2', type=int, required=True)
+    parser.add_argument('--mode', help='mode', type=str, default=None)
     parser.add_argument('--skip', help='act repeat', type=int, required=True)
     parser.add_argument('--ai_skip', help='ai act repeat', type=int, required=True)
     parser.add_argument('--field', help='field type', type=str, choices=['small', 'large'], required=True)
@@ -305,6 +307,7 @@ if __name__ == '__main__':
     RNN_ACTIVATION = args.rnn_activation
     NUM_LOOKAHEAD = args.num_lookahead
     USE_REG = bool(args.reg)
+    MODE = args.mode
     train_logdir = args.log    
 
     logger.info('USE_RNN = {}, NO_FC = {}, SINGLE_RNN = {}, RNN_HIDDEN = {}, RNN_STEP = {}'.format(USE_RNN, NO_FC, SINGLE_RNN, RNN_HIDDEN, RNN_STEP))
