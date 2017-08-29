@@ -22,7 +22,7 @@ import pygame_soccer.soccer.soccer_environment as soccer_environment
 import pygame_soccer.soccer.soccer_renderer as soccer_renderer
 import pygame_soccer.util.file_util as file_util
 
-__all__ = ['SoccerPlayer']
+__all__ = ['SoccerPlayer', 'get_raw_env']
 
 class SoccerSavingBallEnvironment(soccer_environment.SoccerEnvironment): 
    def reset(self):
@@ -137,8 +137,7 @@ class SoccerPassingBallEnvironment(soccer_environment.SoccerEnvironment):
     defensive_target_agent_pos = self.state.get_agent_pos(
         defensive_target_agent_index)
 
-    if team_name == 'COMPUTER':
-        agent_mode = 'OFFENSIVE'
+    agent_mode = 'OFFENSIVE'
 
     # Calculate the target position and the strategic mode
     if agent_mode == 'DEFENSIVE':
@@ -228,6 +227,7 @@ class SoccerPlayer(RLEnvironment):
         
         self.last_info = {}
         self.agent_actions = ['STAND'] * (self.team_size * 2)
+        self.changing_counter = 0
 
         self.current_episode_score = StatCounter()
         self.restart_episode()
@@ -284,8 +284,10 @@ class SoccerPlayer(RLEnvironment):
         self.env.reset()
         self._set_computer_mode(self.mode)
         self.last_raw_screen = self._grab_raw_image()
+        self.changing_counter = 0
 
     def action(self, act):
+        ball_pos_agent_old = self.env.state.get_ball_possession()
         r = 0
         for k in range(self.frame_skip):
             if k == self.frame_skip - 1:
@@ -298,6 +300,12 @@ class SoccerPlayer(RLEnvironment):
                 break
         self.current_episode_score.feed(r)
         isOver = self.env.state.is_terminal()
+        ball_pos_agent_new = self.env.state.get_ball_possession()
+        
+        if ball_pos_agent_old['team_name'] == ball_pos_agent_new['team_name'] and ball_pos_agent_new['team_name'] == 'PLAYER':
+            if ball_pos_agent_old['team_agent_index'] != ball_pos_agent_new['team_agent_index']:
+                self.changing_counter += 1
+
         if isOver:
             self.finish_episode()
             self.restart_episode()
@@ -305,10 +313,21 @@ class SoccerPlayer(RLEnvironment):
 
     def get_internal_state(self):
         return self.last_info   
+    def get_changing_counter(self):
+        return self.changing_counter
+
+def get_raw_env(experiment):
+    if experiment == 'STANDARD':
+        return soccer_environment.SoccerEnvironment
+    elif experiment == 'PASSING':
+        return soccer_environment.SoccerPassingBallEnvironment
+    elif experiment == 'SAVING':
+        return soccer_environment.SoccerSavingBallEnvironment
+    assert 0
 
 if __name__ == '__main__':
     pl = SoccerPlayer(image_shape=(84, 84), viz=1, frame_skip=1, field='large', ai_frame_skip=1, 
-            team_size=2, raw_env=SoccerSavingBallEnvironment)
+            team_size=2, raw_env=SoccerPassingBallEnvironment)
     rng = get_rng(5)
     import time
     while True:
@@ -316,8 +335,7 @@ if __name__ == '__main__':
         # cv2.imshow(a.romname, im)
         act = rng.choice(range(5))
         act = 4
-        print(act)
         r, o = pl.action(act)
         pl.current_state()
+        print(pl.get_changing_counter())
         # time.sleep(0.1)
-        print(r, o) 
