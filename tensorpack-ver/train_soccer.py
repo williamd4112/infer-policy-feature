@@ -47,9 +47,10 @@ FIELD = None
 LR = None
 AI_SKIP = None
 MODE = None
+MULTI_TASK = None
 
 def get_player(viz=False, train=False):
-    pl = SoccerPlayer(image_shape=IMAGE_SIZE[::-1], viz=viz, frame_skip=ACTION_REPEAT, field=FIELD, ai_frame_skip=AI_SKIP, mode=MODE)
+    pl = SoccerPlayer(image_shape=IMAGE_SIZE[::-1], viz=viz, frame_skip=ACTION_REPEAT, field=FIELD, ai_frame_skip=AI_SKIP, mode=MODE, team_size=2 if MULTI_TASK else 1)
     if not train:
         # create a new axis to stack history on
         pl = MapPlayerState(pl, lambda im: im[:, :, np.newaxis])
@@ -151,6 +152,7 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', help='batch size', type=int, required=True)
     parser.add_argument('--lr', help='lr', type=float, required=True)
     parser.add_argument('--ai_skip', help='ai act repeat', type=int, required=True)
+    parser.add_argument('--mt', help='mt', type=int, required=True)
     args = parser.parse_args()
 
     if args.gpu:
@@ -164,6 +166,9 @@ if __name__ == '__main__':
     LR = args.lr
     AI_SKIP = args.ai_skip
     MODE = args.mode
+    MULTI_TASK = bool(args.mt)
+
+    scenario = 'MT' if MULTI_TASK else 'ST'
 
     # set num_actions
     NUM_ACTIONS = SoccerPlayer().get_action_space().num_actions()
@@ -181,8 +186,8 @@ if __name__ == '__main__':
             eval_model_multithread(cfg, EVAL_EPISODE, get_player)
     else:
         logger.set_logger_dir(
-            os.path.join(args.log, '{}-{}-skip-{}-ai_skip-{}-field-{}-hist-{}-batch-{}-lr-{}-{}'.format(
-                args.mode, args.algo, args.skip, args.ai_skip, args.field, args.hist_len, args.batch_size, args.lr, os.path.basename('soccer').split('.')[0])))
+            os.path.join(args.log, '{}-{}-{}-skip-{}-ai_skip-{}-field-{}-hist-{}-batch-{}-lr-{}-{}'.format(
+                scenario, args.mode, args.algo, args.skip, args.ai_skip, args.field, args.hist_len, args.batch_size, args.lr, os.path.basename('soccer').split('.')[0])))
         config = get_config()
         if args.load:
             config.session_init = SaverRestore(args.load)
