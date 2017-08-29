@@ -24,6 +24,154 @@ import pygame_soccer.util.file_util as file_util
 
 __all__ = ['SoccerPlayer']
 
+class SoccerSavingBallEnvironment(soccer_environment.SoccerEnvironment): 
+   def reset(self):
+        super(SoccerSavingBallEnvironment, self).reset()
+        player_agent_index = self.get_agent_index('PLAYER', 1)
+        ball_pos = self.state.get_ball_possession()
+        agent_index = ball_pos['agent_index']
+        self.state.switch_ball(agent_index, player_agent_index)
+ 
+   def _get_ai_action(self, team_name, team_agent_index):
+    # Get the opponent team name
+    opponent_team_name = self.get_opponent_team_name(team_name)
+    # Get the agent info
+    agent_index = self.get_agent_index(team_name, team_agent_index)
+    agent_pos = self.state.get_agent_pos(agent_index)
+    agent_ball = self.state.get_agent_ball(agent_index)
+    agent_mode = self.state.get_agent_mode(agent_index)
+    agent_frame_skip_index = self.state.get_agent_frame_skip_index(
+        agent_index)
+    # Select the previous action if it's frame skipping
+    if agent_frame_skip_index > 0:
+      return self.state.get_agent_action(agent_index)
+
+    # Get the position of the nearest opponent
+    if team_name == 'COMPUTER':
+        nearest_opponent_index = self.get_agent_index('PLAYER', 1)
+        nearest_opponent_pos = self.state.get_agent_pos(nearest_opponent_index)
+    else:
+        nearest_opponent_index = self._get_nearest_opponent_index(
+            team_name, team_agent_index)
+        nearest_opponent_pos = self.state.get_agent_pos(nearest_opponent_index)
+
+    # Get the position of the defensive target
+    defensive_target_agent_index = self._get_defensive_agent_index(
+        team_name, team_agent_index)
+    defensive_target_agent_pos = self.state.get_agent_pos(
+        defensive_target_agent_index)
+
+    if team_name == 'COMPUTER':
+        agent_mode = 'OFFENSIVE'
+    if team_name == 'PLAYER':
+        agent_mode = 'DEFENSIVE'
+
+    # Calculate the target position and the strategic mode
+    if agent_mode == 'DEFENSIVE':
+      if agent_ball:
+        target_pos = nearest_opponent_pos
+        strategic_mode = 'AVOID'
+      else:
+        # Calculate the distance from the agent
+        goals = self.map_data.goals[opponent_team_name]
+        distances = [self.get_pos_distance(goal_pos, defensive_target_agent_pos)
+                     for goal_pos in goals]
+        # Select the minimum distance
+        min_distance_index = np.argmin(distances)
+        target_pos = goals[min_distance_index]
+        strategic_mode = 'APPROACH'
+    elif agent_mode == 'OFFENSIVE':
+      if agent_ball:
+        # Calculate the distance from the opponent
+        goals = self.map_data.goals[team_name]
+        distances = [self.get_pos_distance(goal_pos, nearest_opponent_pos)
+                     for goal_pos in goals]
+        # Select the maximum distance
+        max_distance_index = np.argmax(distances)
+        target_pos = goals[max_distance_index]
+        strategic_mode = 'APPROACH'
+      else:
+        target_pos = defensive_target_agent_pos
+        strategic_mode = 'INTERCEPT'
+    else:
+      raise KeyError('Unknown agent mode {}'.format(agent_mode))
+    # Get the strategic action
+    action = self._get_strategic_action(agent_pos, target_pos, strategic_mode)
+    return action
+
+
+class SoccerPassingBallEnvironment(soccer_environment.SoccerEnvironment): 
+   def reset(self):
+        super(SoccerPassingBallEnvironment, self).reset()
+        player_agent_index = self.get_agent_index('PLAYER', 0)
+        ball_pos = self.state.get_ball_possession()
+        agent_index = ball_pos['agent_index']
+        self.state.switch_ball(agent_index, player_agent_index)
+ 
+   def _get_ai_action(self, team_name, team_agent_index):
+    # Get the opponent team name
+    opponent_team_name = self.get_opponent_team_name(team_name)
+    # Get the agent info
+    agent_index = self.get_agent_index(team_name, team_agent_index)
+    agent_pos = self.state.get_agent_pos(agent_index)
+    agent_ball = self.state.get_agent_ball(agent_index)
+    agent_mode = self.state.get_agent_mode(agent_index)
+    agent_frame_skip_index = self.state.get_agent_frame_skip_index(
+        agent_index)
+    # Select the previous action if it's frame skipping
+    if agent_frame_skip_index > 0:
+      return self.state.get_agent_action(agent_index)
+
+    # Get the position of the nearest opponent
+    if team_name == 'COMPUTER':
+        nearest_opponent_index = 0
+        nearest_opponent_pos = self.state.get_agent_pos(nearest_opponent_index)
+    else:
+        nearest_opponent_index = self._get_nearest_opponent_index(
+            team_name, team_agent_index)
+        nearest_opponent_pos = self.state.get_agent_pos(nearest_opponent_index)
+
+    # Get the position of the defensive target
+    defensive_target_agent_index = self._get_defensive_agent_index(
+        team_name, team_agent_index)
+    defensive_target_agent_pos = self.state.get_agent_pos(
+        defensive_target_agent_index)
+
+    if team_name == 'COMPUTER':
+        agent_mode = 'OFFENSIVE'
+
+    # Calculate the target position and the strategic mode
+    if agent_mode == 'DEFENSIVE':
+      if agent_ball:
+        target_pos = nearest_opponent_pos
+        strategic_mode = 'AVOID'
+      else:
+        # Calculate the distance from the agent
+        goals = self.map_data.goals[opponent_team_name]
+        distances = [self.get_pos_distance(goal_pos, defensive_target_agent_pos)
+                     for goal_pos in goals]
+        # Select the minimum distance
+        min_distance_index = np.argmin(distances)
+        target_pos = goals[min_distance_index]
+        strategic_mode = 'APPROACH'
+    elif agent_mode == 'OFFENSIVE':
+      if agent_ball:
+        # Calculate the distance from the opponent
+        goals = self.map_data.goals[team_name]
+        distances = [self.get_pos_distance(goal_pos, nearest_opponent_pos)
+                     for goal_pos in goals]
+        # Select the maximum distance
+        max_distance_index = np.argmax(distances)
+        target_pos = goals[max_distance_index]
+        strategic_mode = 'APPROACH'
+      else:
+        target_pos = defensive_target_agent_pos
+        strategic_mode = 'INTERCEPT'
+    else:
+      raise KeyError('Unknown agent mode {}'.format(agent_mode))
+    # Get the strategic action
+    action = self._get_strategic_action(agent_pos, target_pos, strategic_mode)
+    return action
 
 class SoccerPlayer(RLEnvironment):
     """
@@ -38,7 +186,7 @@ class SoccerPlayer(RLEnvironment):
                 field=None, partial=False, radius=2,
                 frame_skip=4, 
                 image_shape=(84, 84), 
-                mode=None, team_size=1, ai_frame_skip=1):
+                mode=None, team_size=1, ai_frame_skip=1, raw_env=soccer_environment.SoccerEnvironment):
         super(SoccerPlayer, self).__init__()
         
         if mode != None:
@@ -64,7 +212,7 @@ class SoccerPlayer(RLEnvironment):
 
         self.team_size = team_size
         self.env_options = soccer_environment.SoccerEnvironmentOptions(team_size=self.team_size, map_path=map_path, ai_frame_skip=ai_frame_skip)
-        self.env = soccer_environment.SoccerEnvironment(env_options=self.env_options, renderer_options=self.renderer_options)
+        self.env = raw_env(env_options=self.env_options, renderer_options=self.renderer_options)
 
         self.computer_team_name = self.env.team_names[1]
         self.player_team_name = self.env.team_names[0]
@@ -156,4 +304,20 @@ class SoccerPlayer(RLEnvironment):
         return (r, isOver)
 
     def get_internal_state(self):
-        return self.last_info    
+        return self.last_info   
+
+if __name__ == '__main__':
+    pl = SoccerPlayer(image_shape=(84, 84), viz=1, frame_skip=1, field='large', ai_frame_skip=1, 
+            team_size=2, raw_env=SoccerSavingBallEnvironment)
+    rng = get_rng(5)
+    import time
+    while True:
+        # im = a.grab_image()
+        # cv2.imshow(a.romname, im)
+        act = rng.choice(range(5))
+        act = 4
+        print(act)
+        r, o = pl.action(act)
+        pl.current_state()
+        # time.sleep(0.1)
+        print(r, o) 
