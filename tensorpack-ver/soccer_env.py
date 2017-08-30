@@ -224,11 +224,11 @@ class SoccerPlayer(RLEnvironment):
         self.actions = self.env.actions
         self.frame_skip = frame_skip
         self.image_shape = image_shape
-        
+         
         self.last_info = {}
         self.agent_actions = ['STAND'] * (self.team_size * 2)
         self.changing_counter = 0
-
+        self.timestep = 0
         self.current_episode_score = StatCounter()
         self.restart_episode()
 
@@ -253,19 +253,25 @@ class SoccerPlayer(RLEnvironment):
             self.agent_actions[self.team_size * 1 + i] = action
         return np.asarray([self.env.actions.index(act if act else 'STAND') for act in self.agent_actions])
     
-    def _set_computer_mode(self, mode):
-        if mode == None:
-            return
-        # Collaborator
-        for i in range(1, self.team_size):
-            index = self.env.get_agent_index(self.player_team_name, i)
-            m = mode[self.team_size * 0 + i - 1]
-            self.env.state.set_agent_mode(index, m)
-        # Opponent
+    def _set_opponent_mode(self, mode):
         for i in range(self.team_size):
             index = self.env.get_agent_index(self.computer_team_name, i)
             m = mode[self.team_size * 1 + i - 1]
             self.env.state.set_agent_mode(index, m)
+
+    def _set_collaborator_mode(self, mode):
+        for i in range(1, self.team_size):
+            index = self.env.get_agent_index(self.player_team_name, i)
+            m = mode[self.team_size * 0 + i - 1]
+            self.env.state.set_agent_mode(index, m)
+ 
+    def _set_computer_mode(self, mode):
+        if mode == None or len(mode) < 3:
+            return
+        # Collaborator
+        self._set_collaborator_mode(mode)
+        # Opponent
+        self._set_opponent_mode(mode)
    
     def current_state(self):
         ret = self._grab_raw_image()
@@ -285,19 +291,55 @@ class SoccerPlayer(RLEnvironment):
         self._set_computer_mode(self.mode)
         self.last_raw_screen = self._grab_raw_image()
         self.changing_counter = 0
+        self.timestep = 0
 
     def action(self, act):
         ball_pos_agent_old = self.env.state.get_ball_possession()
         r = 0
+        ball_poss_old = self.env.state.get_ball_possession()['team_name']
         for k in range(self.frame_skip):
+            self.timestep += 1
             if k == self.frame_skip - 1:
                 self.last_raw_screen = self._grab_raw_image()
-            ret = self.env.take_action(self.env.actions[act])
+
+            if self.mode[0] == 'WEAKCOOP':
+                actions = {}
+                for team_name in self.env.team_names:
+                    for team_agent_index in range(self.env.options.team_size):
+                        agent_index = self.env.get_agent_index(team_name, team_agent_index)
+                        agent_action = self.env._get_ai_action(team_name, team_agent_index)
+                        actions[agent_index] = agent_action
+                player_index = self.env.get_agent_index(self.player_team_name, 0)
+                coop_index = self.env.get_agent_index(self.player_team_name, 1)
+
+                actions[player_index] = self.env.actions[act]
+                if random.random() < 0.5:
+                    actions[coop_index] = random.choice(self.env.actions)
+                ret = self.env.take_all_actions(actions)            
+            else:
+                ret = self.env.take_action(self.env.actions[act])
+            
+            if self.mode[0] == 'RANDOM':
+                choices = ['OFFENSIVE', 'DEFENSIVE']
+                ball_poss_new = self.env.state.get_ball_possession()['team_name']
+                if self.timestep % 10 == 0:
+                    new_modes = [random.choice(choices) for i in range(self.team_size)]
+                    self._set_opponent_mode(new_modes)
+
+            if self.mode[0] == 'ALL_RANDOM':
+                player_index = self.env.get_agent_index(self.player_team_name, 0)
+                opponent_index = self.env.get_agent_index(self.computer_team_name, 0)
+                actions = {player_index: self.env.actions[act],
+                           opponent_index: random.choice(self.env.actions)}
+                ret = self.env.take_all_actions(actions)
+  
             if k == 0:
                 self.last_info['agent_actions'] = self._get_computer_actions()      
             r += ret.reward
+            
             if self.env.state.is_terminal():
                 break
+       
         self.current_episode_score.feed(r)
         isOver = self.env.state.is_terminal()
         ball_pos_agent_new = self.env.state.get_ball_possession()
