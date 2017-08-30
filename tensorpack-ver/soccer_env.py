@@ -228,6 +228,8 @@ class SoccerPlayer(RLEnvironment):
         self.last_info = {}
         self.agent_actions = ['STAND'] * (self.team_size * 2)
         self.changing_counter = 0
+        self.all_changing_counter = 0
+        self.all_episode = 0
 
         self.current_episode_score = StatCounter()
         self.restart_episode()
@@ -304,9 +306,12 @@ class SoccerPlayer(RLEnvironment):
         
         if ball_pos_agent_old['team_name'] == ball_pos_agent_new['team_name'] and ball_pos_agent_new['team_name'] == 'PLAYER':
             if ball_pos_agent_old['team_agent_index'] != ball_pos_agent_new['team_agent_index']:
-                self.changing_counter += 1
+                self.changing_counter = min(1, self.changing_counter + 1)
 
         if isOver:
+            self.all_episode += 1
+            self.all_changing_counter += max(self.changing_counter * r, 0)
+            print('Changing rate', float(self.all_changing_counter) / self.all_episode)
             self.finish_episode()
             self.restart_episode()
         return (r, isOver)
@@ -320,9 +325,9 @@ def get_raw_env(experiment):
     if experiment == 'STANDARD':
         return soccer_environment.SoccerEnvironment
     elif experiment == 'PASSING':
-        return soccer_environment.SoccerPassingBallEnvironment
+        return SoccerPassingBallEnvironment
     elif experiment == 'SAVING':
-        return soccer_environment.SoccerSavingBallEnvironment
+        return SoccerSavingBallEnvironment
     assert 0
 
 if __name__ == '__main__':

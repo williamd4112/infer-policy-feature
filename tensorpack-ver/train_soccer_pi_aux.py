@@ -25,7 +25,7 @@ import tensorflow as tf
 from DQNPIModel import Model as DQNModel
 import common
 from common import play_model, Evaluator, eval_model_multithread
-from soccer_env import SoccerPlayer
+from soccer_env import SoccerPlayer, get_raw_env
 from augment_expreplay import AugmentExpReplay
 from tensorpack.tfutils import symbolic_functions as symbf
 
@@ -64,10 +64,11 @@ RNN_ACTIVATION = None
 MODE = None
 MULTI_TASK_MODE = None
 REG = None
-EXPERIMENT = 'STANDARD'
+EXPERIMENT = None
 
-def get_player(viz=False, train=False):
+def get_player(viz=False, train=False, raw=False):
     pl = SoccerPlayer(image_shape=IMAGE_SIZE[::-1], viz=viz, frame_skip=ACTION_REPEAT, field=FIELD, ai_frame_skip=AI_SKIP, team_size=2 if MULTI_TASK else 1, mode=MODE, raw_env=EXPERIMENT)
+    raw_pl = pl
     if not train:
         # create a new axis to stack history on
         pl = MapPlayerState(pl, lambda im: im[:, :, np.newaxis])
@@ -76,6 +77,8 @@ def get_player(viz=False, train=False):
 
         pl = PreventStuckPlayer(pl, 30, 1)
     #pl = LimitLengthPlayer(pl, 30000)
+    if raw:
+        return pl, raw_pl
     return pl
 
 def get_activation():
@@ -281,6 +284,7 @@ if __name__ == '__main__':
     parser.add_argument('--lr_list', help='lr schedule', type=str, default='600:4e-4,1000:2e-4')
     parser.add_argument('--eps_list', help='eps schedule', type=str, default='100:0.1,3200:0.01')
     parser.add_argument('--reg', help='reg', type=int, required=True)
+    parser.add_argument('--exp', help='experiment', type=str, default='STANDARD')
     args = parser.parse_args()
 
     if args.gpu:
@@ -310,6 +314,7 @@ if __name__ == '__main__':
     RNN_ACTIVATION = args.rnn_activation
     MODE = args.mode
     REG = bool(args.reg)
+    EXPERIMENT = get_raw_env(args.exp)
     train_logdir = args.log    
 
     logger.info('USE_RNN = {}, NO_FC = {}, SINGLE_RNN = {}, RNN_HIDDEN = {}, RNN_STEP = {}'.format(USE_RNN, NO_FC, SINGLE_RNN, RNN_HIDDEN, RNN_STEP))
@@ -345,7 +350,7 @@ if __name__ == '__main__':
             input_names=input_names,
             output_names=output_names)
         if args.task == 'play':
-            play_model(cfg, get_player(viz=1))
+            play_model(cfg, get_player)
         elif args.task == 'eval':
             eval_model_multithread(cfg, EVAL_EPISODE, get_player)
     else:

@@ -27,12 +27,14 @@ def play_one_episode(player, func, verbose=False):
     return np.mean(player.play_one_episode(f))
 
 
-def play_model(cfg, player):
+def play_model(cfg, get_player):
+    player = get_player(viz=0)
     predfunc = OfflinePredictor(cfg)
+    ep = 0
     while True:
         score = play_one_episode(player, predfunc)
-        print("Total:", score)
-
+        print('Episode', ep, score)
+        ep += 1
 
 def eval_with_funcs(predictors, nr_eval, get_player_fn):
     class Worker(StoppableThread, ShareSessionThread):
