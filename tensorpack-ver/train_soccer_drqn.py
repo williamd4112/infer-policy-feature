@@ -162,7 +162,7 @@ if __name__ == '__main__':
     parser.add_argument('--algo', help='algorithm',
                         choices=['DQN', 'Double', 'Dueling'], default='DQN')
     parser.add_argument('--mode', help='mode',
-                        choices=['OFFENSIVE', 'DEFENSIVE', None], default=None)
+                       type=str, default=None)
     parser.add_argument('--skip', help='act repeat', type=int, required=True)
     parser.add_argument('--ai_skip', help='ai act repeat', type=int, required=True)
     parser.add_argument('--field', help='field type', type=str, choices=['small', 'large'], required=True)

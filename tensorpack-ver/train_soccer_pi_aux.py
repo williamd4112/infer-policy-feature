@@ -64,10 +64,10 @@ RNN_ACTIVATION = None
 MODE = None
 MULTI_TASK_MODE = None
 REG = None
-EXPERIMENT = 'STANDARD'
+TASK = None
 
 def get_player(viz=False, train=False):
-    pl = SoccerPlayer(image_shape=IMAGE_SIZE[::-1], viz=viz, frame_skip=ACTION_REPEAT, field=FIELD, ai_frame_skip=AI_SKIP, team_size=2 if MULTI_TASK else 1, mode=MODE, raw_env=EXPERIMENT)
+    pl = SoccerPlayer(image_shape=IMAGE_SIZE[::-1], viz=viz, frame_skip=ACTION_REPEAT, field=FIELD, ai_frame_skip=AI_SKIP, team_size=2 if MULTI_TASK else 1, mode=MODE)
     if not train:
         # create a new axis to stack history on
         pl = MapPlayerState(pl, lambda im: im[:, :, np.newaxis])
@@ -193,7 +193,13 @@ def get_config():
     if KEEP_STATE:
         predictor_io_names=(['state', 'q_rnn_state_in', 'pi_rnn_state_in'], ['Qvalue', 'q_rnn_state_out', 'pi_rnn_state_out'])
     else:
-        predictor_io_names=(['state'], ['Qvalue'])
+        if TASK == 'play':
+            if MULTI_TASK:
+                predictor_io_names=(['state'], ['Qvalue', 'Pivalue-0', 'Pivalue-1', 'Pivalue-2'])
+            else:
+                predictor_io_names=(['state'], ['Qvalue', 'Pivalue-0'])
+        else:
+            predictor_io_names=(['state'], ['Qvalue'])
 
     M = Model()
     expreplay = AugmentExpReplay(
@@ -310,7 +316,8 @@ if __name__ == '__main__':
     RNN_ACTIVATION = args.rnn_activation
     MODE = args.mode
     REG = bool(args.reg)
-    train_logdir = args.log    
+    train_logdir = args.log
+    TASK = args.task
 
     logger.info('USE_RNN = {}, NO_FC = {}, SINGLE_RNN = {}, RNN_HIDDEN = {}, RNN_STEP = {}'.format(USE_RNN, NO_FC, SINGLE_RNN, RNN_HIDDEN, RNN_STEP))
 

@@ -14,15 +14,17 @@ from tensorpack import *
 from tensorpack.utils.concurrency import *
 from tensorpack.utils.stats import *
 
-
 def play_one_episode(player, func, verbose=False):
     def f(s):
         spc = player.get_action_space()
-        act = func([[s]])[0][0].argmax()
+        output = func([[s]])[0]
+        act = output[0].argmax()
+        pis = [ pi[0] for pi in output[1:]: ]
+        
         if random.random() < 0.001:
             act = spc.sample()
         if verbose:
-            print(act)
+            print(act, pis)
         return act
     return np.mean(player.play_one_episode(f))
 

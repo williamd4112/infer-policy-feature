@@ -144,8 +144,7 @@ if __name__ == '__main__':
                         choices=['play', 'eval', 'train'], default='train')
     parser.add_argument('--algo', help='algorithm',
                         choices=['DQN', 'Double', 'Dueling'], default='DQN')
-    parser.add_argument('--mode', help='mode',
-                        choices=['OFFENSIVE', 'DEFENSIVE', 'RANDOM', None], default=None)
+    parser.add_argument('--mode', help='mode', default=None, type=str)
     parser.add_argument('--skip', help='act repeat', type=int, required=True)
     parser.add_argument('--field', help='field type', type=str, choices=['small', 'large'], required=True)
     parser.add_argument('--hist_len', help='hist len', type=int, required=True)
@@ -169,6 +168,7 @@ if __name__ == '__main__':
     MULTI_TASK = bool(args.mt)
 
     scenario = 'MT' if MULTI_TASK else 'ST'
+    mode = args.mode if args.mode != None else 'None'
 
     # set num_actions
     NUM_ACTIONS = SoccerPlayer().get_action_space().num_actions()
@@ -187,7 +187,7 @@ if __name__ == '__main__':
     else:
         logger.set_logger_dir(
             os.path.join(args.log, '{}-{}-{}-skip-{}-ai_skip-{}-field-{}-hist-{}-batch-{}-lr-{}-{}'.format(
-                scenario, args.mode, args.algo, args.skip, args.ai_skip, args.field, args.hist_len, args.batch_size, args.lr, os.path.basename('soccer').split('.')[0])))
+                scenario, mode, args.algo, args.skip, args.ai_skip, args.field, args.hist_len, args.batch_size, args.lr, os.path.basename('soccer').split('.')[0])))
         config = get_config()
         if args.load:
             config.session_init = SaverRestore(args.load)

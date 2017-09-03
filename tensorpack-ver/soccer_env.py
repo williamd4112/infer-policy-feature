@@ -188,13 +188,10 @@ class SoccerPlayer(RLEnvironment):
                 mode=None, team_size=1, ai_frame_skip=1, raw_env=soccer_environment.SoccerEnvironment):
         super(SoccerPlayer, self).__init__()
         
-        if mode != None:
-            if team_size > 1:
-                self.mode = mode.split(',')
-            else:
-                self.mode = [ mode ]
+        if team_size > 1 and mode != None:
+            self.mode = mode.split(',')
         else:
-            self.mode = mode
+            self.mode = [ mode ]
         self.field = field
         self.partial = partial
         self.viz = viz
@@ -256,22 +253,24 @@ class SoccerPlayer(RLEnvironment):
     def _set_opponent_mode(self, mode):
         for i in range(self.team_size):
             index = self.env.get_agent_index(self.computer_team_name, i)
-            m = mode[self.team_size * 1 + i - 1]
+            m = mode[i]
             self.env.state.set_agent_mode(index, m)
 
     def _set_collaborator_mode(self, mode):
         for i in range(1, self.team_size):
             index = self.env.get_agent_index(self.player_team_name, i)
-            m = mode[self.team_size * 0 + i - 1]
+            m = mode[i - 1]
             self.env.state.set_agent_mode(index, m)
  
     def _set_computer_mode(self, mode):
-        if mode == None or len(mode) < 3:
+        if mode[0] == None or len(mode) < self.team_size * 2 - 1:
             return
-        # Collaborator
-        self._set_collaborator_mode(mode)
-        # Opponent
-        self._set_opponent_mode(mode)
+        if mode[0] in ['OFFENVIE', 'DFFENSIVE']:
+            # Collaborator
+            if self.team_size >= 2:
+                self._set_collaborator_mode(mode[:(self.team_size - 1)])
+            # Opponent
+            self._set_opponent_mode(mode[(self.team_size - 1):])
    
     def current_state(self):
         ret = self._grab_raw_image()
@@ -319,20 +318,33 @@ class SoccerPlayer(RLEnvironment):
             else:
                 ret = self.env.take_action(self.env.actions[act])
             
-            if self.mode[0] == 'RANDOM':
+            if self.mode[0] == 'OPPONENT_DYNAMIC':
                 choices = ['OFFENSIVE', 'DEFENSIVE']
-                ball_poss_new = self.env.state.get_ball_possession()['team_name']
-                if self.timestep % 10 == 0:
+                if self.timestep % random.randint(4, 10) == 0:
                     new_modes = [random.choice(choices) for i in range(self.team_size)]
                     self._set_opponent_mode(new_modes)
 
+            if self.mode[0] == 'COOP_DYNAMIC':
+                choices = ['OFFENSIVE', 'DEFENSIVE']
+                if self.timestep % random.randint(4, 10) == 0:
+                    new_modes = [random.choice(choices) for i in range(self.team_size - 1)]
+                    self._set_collaborator_mode(new_modes)
+
             if self.mode[0] == 'ALL_RANDOM':
-                player_index = self.env.get_agent_index(self.player_team_name, 0)
-                opponent_index = self.env.get_agent_index(self.computer_team_name, 0)
-                actions = {player_index: self.env.actions[act],
+                if self.team_size == 1:
+                    player_index = self.env.get_agent_index(self.player_team_name, 0)
+                    opponent_index = self.env.get_agent_index(self.computer_team_name, 0)
+                    actions = {player_index: self.env.actions[act],
                            opponent_index: random.choice(self.env.actions)}
+                else:
+                    actions = {}
+                    for team_name in [self.player_team_name, self.computer_team_name]:
+                        for team_index in range(self.team_size):
+                            agent_index = self.env.get_agent_index(team_name, team_index)
+                            actions[agent_index] = random.choice(self.env.actions)
+                    player_index = self.env.get_agent_index(self.player_team_name, 0)
+                    actions[player_index] = self.env.actions[act]
                 ret = self.env.take_all_actions(actions)
-  
             if k == 0:
                 self.last_info['agent_actions'] = self._get_computer_actions()      
             r += ret.reward
