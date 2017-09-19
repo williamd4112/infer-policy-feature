@@ -2,6 +2,7 @@
 # -*- coding: utf-8 -*-
 # File: common.py
 # Author: Yuxin Wu <ppwwyyxxc@gmail.com>
+
 import random
 import time
 import threading
@@ -19,8 +20,8 @@ def play_one_episode(player, func, verbose=False):
         spc = player.get_action_space()
         output = func([[s]])[0]
         act = output[0].argmax()
-        pis = [ pi[0] for pi in output[1:]: ]
-        
+        pis = [ pi[0] for pi in output[1:] ]
+
         if random.random() < 0.001:
             act = spc.sample()
         if verbose:

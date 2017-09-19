@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-# File: expreplay.py
-# Author: Yuxin Wu <ppwwyyxxc@gmail.com>
+# modified from the work of Yuxin Wu <ppwwyyxxc@gmail.com>
 
 import numpy as np
 import copy
@@ -88,7 +87,7 @@ class AugmentExpReplay(ExpReplay, Callback):
                  batch_size,
                  memory_size, init_memory_size,
                  init_exploration,
-                 update_frequency, history_len, h_size=512, keep_state=False, num_agents=1):
+                 update_frequency, history_len, h_size=512, num_agents=1):
         """
         Args:
             predictor_io_names (tuple of list of str): input/output names to
@@ -99,7 +98,7 @@ class AugmentExpReplay(ExpReplay, Callback):
             update_frequency (int): number of new transitions to add to memory
                 after sampling a batch of transitions for training.
         """
-        super(AugmentExpReplay, self).__init__(predictor_io_names, 
+        super(AugmentExpReplay, self).__init__(predictor_io_names,
                 player,
                 state_shape,
                 batch_size,
@@ -109,11 +108,7 @@ class AugmentExpReplay(ExpReplay, Callback):
                 update_frequency,
                 history_len)
         self.num_agents = num_agents
-        self.keep_state = keep_state
         self.h_size = h_size
-        self.q_rnn_state = np.zeros([2, self.h_size], dtype=np.float32)
-        self.pi_rnn_state = np.zeros([2, self.h_size], dtype=np.float32)
-
         self.mem = AugmentReplayMemory(memory_size, state_shape, history_len, num_agents)
 
     def _populate_exp(self):
@@ -127,26 +122,14 @@ class AugmentExpReplay(ExpReplay, Callback):
             history.append(old_s)
             history = np.stack(history, axis=2)
 
-            if self.keep_state:
-                q_values, q_rnn_state, pi_rnn_state = self.predictor([[history], 
-                        [self.q_rnn_state], [self.pi_rnn_state]])  # this is the bottleneck
-                q_rnn_state = np.transpose(q_rnn_state, (1, 0, 2)) 
-                self.q_rnn_state = q_rnn_state[0, :, :] 
-                pi_rnn_state = np.transpose(pi_rnn_state, (1, 0, 2)) 
-                self.pi_rnn_state = pi_rnn_state[0, :, :]
-                act = np.argmax(q_values[0][0])
-            else:
-                # assume batched network
-                q_values = self.predictor([[history]])[0][0]  # this is the bottleneck
-                act = np.argmax(q_values)
+            # assume batched network
+            q_values = self.predictor([[history]])[0][0]  # this is the bottleneck
+            act = np.argmax(q_values)
+
         reward, isOver = self.player.action(act)
         # NOTE: since modify action interface will destroy the proxy design
         action_o = self.player.get_internal_state()['agent_actions'][1:]
         self.mem.append(AugmentExperience(old_s, act, reward, isOver, action_o))
-
-        if isOver and self.keep_state:
-            self.q_rnn_state.fill(0)
-            self.pi_rnn_state.fill(0)
 
     def _process_batch(self, batch_exp):
         state = np.asarray([e[0] for e in batch_exp], dtype='uint8')
@@ -154,22 +137,16 @@ class AugmentExpReplay(ExpReplay, Callback):
         action = np.asarray([e[2] for e in batch_exp], dtype='int8')
         isOver = np.asarray([e[3] for e in batch_exp], dtype='bool')
         action_o = np.asarray([e[4] for e in batch_exp], dtype='int8')
-        
-        if self.keep_state:
-            batch_size = len(state)
-            q_rnn_state = np.zeros([batch_size, 2, self.h_size])
-            pi_rnn_state = np.zeros([batch_size, 2, self.h_size])
-            return [state, action, reward, isOver, action_o, q_rnn_state, pi_rnn_state]
-        else:
-            return [state, action, reward, isOver, action_o]
+
+        return [state, action, reward, isOver, action_o]
 
 if __name__ == '__main__':
     import sys
 
     def predictor(x):
         np.array([1, 1, 1, 1])
-    
-    from soccer_env import SoccerPlayer 
+
+    from soccer_env import SoccerPlayer
 
     player = SoccerPlayer(image_shape=(84, 84), viz=False, frame_skip=4)
 

@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 # File: train_soccer.py
-# Author: zhangwei hong <williamd4112@hotmail.com>
+# Author: Zhangwei hong <williamd4112@hotmail.com>
 
 import numpy as np
 
@@ -22,7 +22,7 @@ from tensorpack.tfutils import symbolic_functions as symbf
 from tensorpack.RL import *
 import tensorflow as tf
 
-from DQNPIModel import Model as DQNModel
+from DPIQNModel import Model as DQNModel
 import common
 from common import play_model, Evaluator, eval_model_multithread
 from soccer_env import SoccerPlayer
@@ -58,8 +58,8 @@ RNN_HIDDEN = 512
 RNN_STEP = 1
 UPDATE_TARGET_STEP = 10000
 MULTI_TASK = False
-LR_LIST = None
-EPS_LIST = None
+LR_SCHED = None
+EPS_SCHED = None
 RNN_ACTIVATION = None
 MODE = None
 MULTI_TASK_MODE = None
@@ -96,24 +96,11 @@ def get_rnn_cell():
 
 class Model(DQNModel):
     def __init__(self):
-        super(Model, self).__init__(IMAGE_SIZE, FRAME_HISTORY, METHOD, 
-            NUM_ACTIONS, GAMMA, LR, LAMB, KEEP_STATE, RNN_HIDDEN, RNN_STEP, MULTI_TASK, 3 if MULTI_TASK else 1, REG, MULTI_TASK_MODE)
-    
+        super(Model, self).__init__(IMAGE_SIZE, FRAME_HISTORY, METHOD,
+            NUM_ACTIONS, GAMMA, LR, LAMB, RNN_HIDDEN, RNN_STEP, MULTI_TASK, 3 if MULTI_TASK else 1, REG, MULTI_TASK_MODE)
+
     def get_rnn_init_state(self, cell, name):
-        if self.keep_state:
-            if RNN_CELL == 'gru':
-                raise NotImplemented()
-            elif RNN_CELL == 'lstm':
-                if name == 'pi':
-                    return tf.contrib.rnn.LSTMStateTuple(self.pi_rnn_state[:, 0, :], self.pi_rnn_state[:, 1, :])
-                elif name == 'q':
-                    return tf.contrib.rnn.LSTMStateTuple(self.q_rnn_state[:, 0, :], self.q_rnn_state[:, 1, :])
-                else:
-                    assert 0
-            else:
-                assert 0
-        else:
-            return cell.zero_state(self.batch_size, tf.float32)
+        return cell.zero_state(self.batch_size, tf.float32)
 
     def _get_DQN_prediction(self, image):
         """ image: [0,255]"""
@@ -127,11 +114,11 @@ class Model(DQNModel):
         with tf.variable_scope('q'):
             with argscope(Conv2D, nl=PReLU.symbolic_function, use_bias=True), \
                     argscope(LeakyReLU, alpha=0.01):
-                padding = 'VALID' if NO_FC else 'SAME'               
+                padding = 'VALID' if NO_FC else 'SAME'
                 h = (LinearWrap(image)
                      .Conv2D('conv0', out_channel=32, kernel_shape=8, stride=4)
                      .Conv2D('conv1', out_channel=64, kernel_shape=4, stride=2)
-                     .Conv2D('conv2', out_channel=64, kernel_shape=3)())                    
+                     .Conv2D('conv2', out_channel=64, kernel_shape=3)())
 
                 if NO_FC:
                     h = symbf.batch_flatten(h)
@@ -147,32 +134,32 @@ class Model(DQNModel):
                         q_l = tf.multiply(q_l, pi_l)
                     q_l = tf.reshape(q_l, [self.batch_size, self.channel, FC_HIDDEN])
                     q_cell = get_rnn_cell()
-                    q_l, q_rnn_state_out = tf.nn.dynamic_rnn(inputs=q_l, 
-                                cell=q_cell, 
+                    q_l, q_rnn_state_out = tf.nn.dynamic_rnn(inputs=q_l,
+                                cell=q_cell,
                                 initial_state=self.get_rnn_init_state(q_cell, 'q'),
                                 dtype=tf.float32, scope='rnn-q')
                     q_l = q_l[:, -RNN_STEP:, :]
-                    q_l = tf.reshape(q_l, (self.batch_size * RNN_STEP, RNN_HIDDEN))                    
+                    q_l = tf.reshape(q_l, (self.batch_size * RNN_STEP, RNN_HIDDEN))
 
                     # pi
                     pi_l = tf.reshape(pi_l, [self.batch_size, self.channel, FC_HIDDEN])
                     pi_cell = get_rnn_cell()
-                    pi_l, pi_rnn_state_out = tf.nn.dynamic_rnn(inputs=pi_l, 
+                    pi_l, pi_rnn_state_out = tf.nn.dynamic_rnn(inputs=pi_l,
                                 cell=pi_cell,
                                 initial_state=self.get_rnn_init_state(pi_cell, 'pi'),
                                 dtype=tf.float32, scope='rnn-pi')
                     pi_l = pi_l[:, -RNN_STEP:, :]
-                    pi_l = tf.reshape(pi_l, (self.batch_size * RNN_STEP, RNN_HIDDEN))                    
-        
+                    pi_l = tf.reshape(pi_l, (self.batch_size * RNN_STEP, RNN_HIDDEN))
+
         pi_ys = []
         for i in range(self.num_agents):
             pi_ys.append(FullyConnected('fct-%d' % i, pi_l, self.num_actions, nl=tf.identity))
-        
+
         if SINGLE_RNN:
             l = q_l
         else:
             l = tf.multiply(q_l, pi_l)
-        
+
         if self.method != 'Dueling':
             Q = FullyConnected('fct', l, self.num_actions, nl=tf.identity)
         else:
@@ -183,23 +170,16 @@ class Model(DQNModel):
 
         pi_values = [ tf.identity(pi_ys[i], name='Pivalue-%d' % i) for i in range(self.num_agents) ]
 
-        if self.keep_state:
-            return tf.identity(Q, name='Qvalue'), pi_values, \
-                tf.identity(q_rnn_state_out, name='q_rnn_state_out'), tf.identity(pi_rnn_state_out, name='pi_rnn_state_out')
-        else:
-            return tf.identity(Q, name='Qvalue'), pi_values, None, None
+        return tf.identity(Q, name='Qvalue'), pi_values, None, None
 
 def get_config():
-    if KEEP_STATE:
-        predictor_io_names=(['state', 'q_rnn_state_in', 'pi_rnn_state_in'], ['Qvalue', 'q_rnn_state_out', 'pi_rnn_state_out'])
-    else:
-        if TASK == 'play':
-            if MULTI_TASK:
-                predictor_io_names=(['state'], ['Qvalue', 'Pivalue-0', 'Pivalue-1', 'Pivalue-2'])
-            else:
-                predictor_io_names=(['state'], ['Qvalue', 'Pivalue-0'])
+    if TASK == 'play':
+        if MULTI_TASK:
+            predictor_io_names=(['state'], ['Qvalue', 'Pivalue-0', 'Pivalue-1', 'Pivalue-2'])
         else:
-            predictor_io_names=(['state'], ['Qvalue'])
+            predictor_io_names=(['state'], ['Qvalue', 'Pivalue-0'])
+    else:
+        predictor_io_names=(['state'], ['Qvalue'])
 
     M = Model()
     expreplay = AugmentExpReplay(
@@ -213,17 +193,16 @@ def get_config():
         update_frequency=UPDATE_FREQ,
         history_len=FRAME_HISTORY,
         h_size=RNN_HIDDEN,
-        keep_state=KEEP_STATE,
         num_agents=(3 if MULTI_TASK else 1)
     )
 
     lr_schedule = []
-    for p in LR_LIST.split(','):
+    for p in LR_SCHED.split(','):
         ep, lr = p.split(':')
         lr_schedule.append((int(ep), float(lr)))
 
     eps_schedule = []
-    for p in EPS_LIST.split(','):
+    for p in EPS_SCHED.split(','):
         ep, eps = p.split(':')
         eps_schedule.append((int(ep), float(eps)))
 
@@ -266,27 +245,26 @@ if __name__ == '__main__':
                         choices=['gru', 'lstm', None], default=None)
     parser.add_argument('--rnn_activation', help='rnn activation',
                         choices=['relu', 'leaky-relu', None], default=None)
-    parser.add_argument('--mt_type', help='multi-task type',
+    parser.add_argument('--mt_type', help='multi-task setting',
                         choices=['coop-only', 'opponent-only', 'all'], default='all')
-    parser.add_argument('--mt', help='2vs2', type=int, required=True)
-    parser.add_argument('--skip', help='act repeat', type=int, required=True)
-    parser.add_argument('--ai_skip', help='ai act repeat', type=int, required=True)
-    parser.add_argument('--field', help='field type', type=str, choices=['small', 'large'], required=True)
-    parser.add_argument('--hist_len', help='hist len', type=int, required=True)
-    parser.add_argument('--batch_size', help='batch size', type=int, required=True)
-    parser.add_argument('--lr', help='lr', type=float, required=True)
-    parser.add_argument('--lamb', help='lamb', type=float, required=True)
-    parser.add_argument('--rnn', help='use_rnn', type=str, required=True)
-    parser.add_argument('--keep_state', help='keep state', type=int, default=0)
-    parser.add_argument('--no_fc', help='no fc', type=int, default=0)
-    parser.add_argument('--single_rnn', help='single rnn', type=int, default=0)
+    parser.add_argument('--mt', help='train in 2v2 env', action='store_true', default=False)
+    parser.add_argument('--skip', help='act repeat', type=int, default=2)
+    parser.add_argument('--ai_skip', help='act repeat of ai in env', type=int, default=2)
+    parser.add_argument('--field', help='field type', type=str, choices=['small', 'large'], default='small')
+    parser.add_argument('--hist_len', help='hist len', type=int, default=12)
+    parser.add_argument('--batch_size', help='batch size', type=int, default=32)
+    parser.add_argument('--lr', help='init lr', type=float, default=1e-3)
+    parser.add_argument('--lamb', help='lamb', type=float, default=1.0)
+    parser.add_argument('--rnn', help='use_rnn', type=str, default=False)
+    parser.add_argument('--no_fc', help='no fc', action='store_true', default=False)
+    parser.add_argument('--single_rnn', help='single rnn', action='store_true', default=False)
     parser.add_argument('--rnn_h', help='rnn hidden', type=int, default=512)
     parser.add_argument('--rnn_step', help='rnn update step', type=int, default=1)
     parser.add_argument('--fc_h', help='fc hidden', type=int, default=512)
     parser.add_argument('--update_target_step', help='target update step', type=int, default=10000)
-    parser.add_argument('--lr_list', help='lr schedule', type=str, default='600:4e-4,1000:2e-4')
-    parser.add_argument('--eps_list', help='eps schedule', type=str, default='100:0.1,3200:0.01')
-    parser.add_argument('--reg', help='reg', type=int, required=True)
+    parser.add_argument('--lr_sched', help='lr schedule', type=str, default='600:4e-4,1000:2e-4')
+    parser.add_argument('--eps_sched', help='eps schedule', type=str, default='100:0.1,3200:0.01')
+    parser.add_argument('--reg', help='reg', action='store_true', default=False)
     args = parser.parse_args()
 
     if args.gpu:
@@ -300,42 +278,33 @@ if __name__ == '__main__':
     LR = args.lr
     AI_SKIP = args.ai_skip
     LAMB = args.lamb
-    MULTI_TASK = bool(args.mt)
+    MULTI_TASK = args.mt
     MULTI_TASK_MODE = args.mt_type
-    USE_RNN = bool(int(args.rnn))
-    SINGLE_RNN = bool(args.single_rnn)
+    USE_RNN = args.rnn
+    SINGLE_RNN =args.single_rnn
     RNN_CELL = args.cell
-    KEEP_STATE = bool(args.keep_state)
-    NO_FC = bool(args.no_fc)
+    NO_FC = args.no_fc
     RNN_HIDDEN = args.rnn_h
     RNN_STEP = args.rnn_step
     FC_HIDDEN = args.fc_h
     UPDATE_TARGET_STEP = args.update_target_step
-    LR_LIST = args.lr_list
-    EPS_LIST = args.eps_list
+    LR_SCHED = args.lr_sched
+    EPS_SCHED = args.eps_sched
     RNN_ACTIVATION = args.rnn_activation
     MODE = args.mode
-    REG = bool(args.reg)
+    REG = args.reg
     train_logdir = args.log
     TASK = args.task
 
     logger.info('USE_RNN = {}, NO_FC = {}, SINGLE_RNN = {}, RNN_HIDDEN = {}, RNN_STEP = {}'.format(USE_RNN, NO_FC, SINGLE_RNN, RNN_HIDDEN, RNN_STEP))
 
-    if KEEP_STATE:
-        assert USE_RNN, 'CNN model not compatiable with keep_state'
-        input_names = ['state', 'q_rnn_state_in', 'pi_rnn_state_in']
-        output_names = ['Qvalue', 'q_rnn_state_out', 'pi_rnn_state_out']
-    else:
-        input_names=['state']
-        output_names=['Qvalue']
-    
     if MULTI_TASK:
         scenario = 'MT-%s' % MULTI_TASK_MODE
     else:
         scenario = 'ST'
 
     if USE_RNN:
-        MODEL_NAME = '%s-%s-RPI-activation-%s-%d-%d-step-%d-keep-%s-nofc-%s-single-%s-%s' % (scenario, args.algo, RNN_ACTIVATION, FC_HIDDEN, RNN_HIDDEN, RNN_STEP, KEEP_STATE, NO_FC, SINGLE_RNN, RNN_CELL)
+        MODEL_NAME = '%s-%s-RPI-activation-%s-%d-%d-step-%d-nofc-%s-single-%s-%s' % (scenario, args.algo, RNN_ACTIVATION, FC_HIDDEN, RNN_HIDDEN, RNN_STEP, NO_FC, SINGLE_RNN, RNN_CELL)
         if NO_FC:
             FC_HIDDEN = 11*11*64
     else:
@@ -349,16 +318,16 @@ if __name__ == '__main__':
         cfg = PredictConfig(
             model=Model(),
             session_init=get_model_loader(args.load),
-            input_names=input_names,
-            output_names=output_names)
+            input_names=['state'],
+            output_names=['Qvalue'])
         if args.task == 'play':
             play_model(cfg, get_player(viz=1))
         elif args.task == 'eval':
             eval_model_multithread(cfg, EVAL_EPISODE, get_player)
     else:
         logger.set_logger_dir(
-            os.path.join(train_logdir, '{}-aux-field-{}-skip-{}-ai_skip-{}-hist-{}-batch-{}-lr-{}-{}-eps-{}-lamb-{}-update-{}-reg-{}-{}'.format(
-                MODEL_NAME, args.field, args.skip, args.ai_skip, args.hist_len, args.batch_size, args.lr, args.lr_list, args.eps_list, args.lamb, UPDATE_TARGET_STEP, REG, os.path.basename('soccer').split('.')[0])))
+            os.path.join(train_logdir, '{}-field-{}-skip-{}-ai_skip-{}-hist-{}-batch-{}-lr-{}-{}-eps-{}-lamb-{}-update-{}-reg-{}-{}'.format(
+                MODEL_NAME, args.field, args.skip, args.ai_skip, args.hist_len, args.batch_size, args.lr, args.lr_sched, args.eps_sched, args.lamb, UPDATE_TARGET_STEP, REG, os.path.basename('soccer').split('.')[0])))
         config = get_config()
         if args.load:
             config.session_init = SaverRestore(args.load)

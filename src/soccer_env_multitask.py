@@ -1,7 +1,5 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-# File: atari.py
-# Author: Yuxin Wu <ppwwyyxxc@gmail.com>
 
 import numpy as np
 import time
