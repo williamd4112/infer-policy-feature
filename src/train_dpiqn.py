@@ -250,7 +250,6 @@ if __name__ == '__main__':
     parser.add_argument('--mt', help='train in 2v2 env', action='store_true', default=False)
     parser.add_argument('--skip', help='act repeat', type=int, default=2)
     parser.add_argument('--ai_skip', help='act repeat of ai in env', type=int, default=2)
-    parser.add_argument('--field', help='field type', type=str, choices=['small', 'large'], default='small')
     parser.add_argument('--hist_len', help='hist len', type=int, default=12)
     parser.add_argument('--batch_size', help='batch size', type=int, default=32)
     parser.add_argument('--lr', help='init lr', type=float, default=1e-3)
@@ -272,7 +271,6 @@ if __name__ == '__main__':
     METHOD = args.algo
 
     ACTION_REPEAT = args.skip
-    FIELD = args.field
     FRAME_HISTORY = args.hist_len
     BATCH_SIZE = args.batch_size
     LR = args.lr
@@ -295,6 +293,7 @@ if __name__ == '__main__':
     REG = args.reg
     train_logdir = args.log
     TASK = args.task
+    FIELD = 'large' if args.mt else 'small'
 
     logger.info('USE_RNN = {}, NO_FC = {}, SINGLE_RNN = {}, RNN_HIDDEN = {}, RNN_STEP = {}'.format(USE_RNN, NO_FC, SINGLE_RNN, RNN_HIDDEN, RNN_STEP))
 
@@ -326,8 +325,9 @@ if __name__ == '__main__':
             eval_model_multithread(cfg, EVAL_EPISODE, get_player)
     else:
         logger.set_logger_dir(
-            os.path.join(train_logdir, '{}-field-{}-skip-{}-ai_skip-{}-hist-{}-batch-{}-lr-{}-{}-eps-{}-lamb-{}-update-{}-reg-{}-{}'.format(
-                MODEL_NAME, args.field, args.skip, args.ai_skip, args.hist_len, args.batch_size, args.lr, args.lr_sched, args.eps_sched, args.lamb, UPDATE_TARGET_STEP, REG, os.path.basename('soccer').split('.')[0])))
+            os.path.join(train_logdir, '{}-skip-{}-ai_skip-{}-hist-{}-batch-{}-lr-{}-{}-eps-{}-lamb-{}-update-{}-reg-{}-{}'.format(
+                MODEL_NAME, args.skip, args.ai_skip, args.hist_len, args.batch_size, args.lr, args.lr_sched, args.eps_sched,
+                args.lamb, UPDATE_TARGET_STEP, REG, os.path.basename('soccer').split('.')[0])))
         config = get_config()
         if args.load:
             config.session_init = SaverRestore(args.load)
