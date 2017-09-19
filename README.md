@@ -14,20 +14,20 @@ Simply enter the following command to train a DPIQN agent:
  
 The following arguments can help you customize your own training arguments:
  ```
-  --gpu GPU             comma separated list of GPU(s) to use.
-  --load LOAD           load model
-  --log LOG             train log dir
+  --gpu                 comma separated list of GPU(s) to use.
+  --load                load model
+  --log                 train log dir
   --task                task to perform {play, eval, train}
   --algo                algorithm for computing Q-value {DQN, Double, Dueling}
   --mode                specify ai mode in env (can be list) {offensive, defensive}
   --mt_mode             multi-task setting {coop-only,opponent-only,all}
   --mt                  use 2v2 env
-  --skip SKIP           act repeat
+  --skip                act repeat
   --hist_len            hist len
   --batch_size          batch size (default: 32)
-  --lr LR               init lr value (default: 1e-3)
-  --rnn RNN             use rnn (DRPIQN)
-  --lr_sched LR_SCHED   lr schedule (default: 600:4e-4,1000:2e-4)
+  --lr                  init lr value (default: 1e-3)
+  --rnn                 use rnn (DRPIQN)
+  --lr_sched            lr schedule (default: 600:4e-4,1000:2e-4)
   --eps_sched           eps decay schedule (default: 100:0.1,3200:0.01)
   --reg                 reg
 ```
