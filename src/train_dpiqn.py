@@ -48,7 +48,6 @@ METHOD = None
 FIELD = None
 LR = None
 AI_SKIP = None
-LAMB = None
 USE_RNN = False
 RNN_CELL = 'lstm'
 FC_HIDDEN = 512
@@ -62,6 +61,7 @@ MODE = None
 MULTI_TASK_MODE = None
 REG = None
 TASK = None
+PI_COEF = 1.0
 
 def get_player(viz=False, train=False):
     pl = SoccerPlayer(image_shape=IMAGE_SIZE[::-1], viz=viz, frame_skip=ACTION_REPEAT, field=FIELD, ai_frame_skip=AI_SKIP, team_size=2 if MULTI_TASK else 1, mode=MODE)
@@ -86,7 +86,7 @@ def get_rnn_cell():
 class Model(DQNModel):
     def __init__(self):
         super(Model, self).__init__(IMAGE_SIZE, FRAME_HISTORY, METHOD,
-            NUM_ACTIONS, GAMMA, LR, LAMB, RNN_HIDDEN, RNN_STEP, MULTI_TASK, 3 if MULTI_TASK else 1, REG, MULTI_TASK_MODE)
+            NUM_ACTIONS, GAMMA, LR, PI_COEF, RNN_HIDDEN, RNN_STEP, MULTI_TASK, 3 if MULTI_TASK else 1, REG, MULTI_TASK_MODE)
 
     def get_rnn_init_state(self, cell, name):
         return cell.zero_state(self.batch_size, tf.float32)
@@ -215,21 +215,19 @@ if __name__ == '__main__':
     parser.add_argument('--log', help='train log dir', default='train_log')
     parser.add_argument('--task', help='task to perform',
                         choices=['play', 'eval', 'train'], default='train')
-    parser.add_argument('--algo', help='algorithm',
+    parser.add_argument('--algo', help='algorithm for computing Q-value',
                         choices=['DQN', 'Double', 'Dueling'], default='DQN')
-    parser.add_argument('--mode', help='mode',
-                        type=str, default=None)
-    parser.add_argument('--mt_type', help='multi-task setting',
+    parser.add_argument('--mode', help='specify ai mode in env', type=str, default=None)
+    parser.add_argument('--mt_mode', help='multi-task setting',
                         choices=['coop-only', 'opponent-only', 'all'], default='all')
-    parser.add_argument('--mt', help='train in 2v2 env', action='store_true', default=False)
+    parser.add_argument('--mt', help='use 2v2 env', action='store_true', default=False)
     parser.add_argument('--skip', help='act repeat', type=int, default=2)
     parser.add_argument('--hist_len', help='hist len', type=int, default=12)
     parser.add_argument('--batch_size', help='batch size', type=int, default=32)
-    parser.add_argument('--lr', help='init lr', type=float, default=1e-3)
-    parser.add_argument('--lamb', help='lamb', type=float, default=1.0)
-    parser.add_argument('--rnn', help='use_rnn', type=str, default=False)
+    parser.add_argument('--lr', help='init lr value', type=float, default=1e-3)
+    parser.add_argument('--rnn', help='use rnn (DRPIQN)', type=str, default=False)
     parser.add_argument('--lr_sched', help='lr schedule', type=str, default='600:4e-4,1000:2e-4')
-    parser.add_argument('--eps_sched', help='eps schedule', type=str, default='100:0.1,3200:0.01')
+    parser.add_argument('--eps_sched', help='eps decay schedule', type=str, default='100:0.1,3200:0.01')
     parser.add_argument('--reg', help='reg', action='store_true', default=False)
     args = parser.parse_args()
 
@@ -241,9 +239,8 @@ if __name__ == '__main__':
     FRAME_HISTORY = args.hist_len
     BATCH_SIZE = args.batch_size
     LR = args.lr
-    LAMB = args.lamb
     MULTI_TASK = args.mt
-    MULTI_TASK_MODE = args.mt_type
+    MULTI_TASK_MODE = args.mt_mode
     USE_RNN = args.rnn
     LR_SCHED = args.lr_sched
     EPS_SCHED = args.eps_sched
@@ -252,8 +249,6 @@ if __name__ == '__main__':
     train_logdir = args.log
     TASK = args.task
     FIELD = 'large' if args.mt else 'small'
-
-    logger.info('USE_RNN = {}, RNN_HIDDEN = {}, RNN_STEP = {}'.format(USE_RNN, RNN_HIDDEN, RNN_STEP))
 
     if MULTI_TASK:
         scenario = 'MT-%s' % MULTI_TASK_MODE
@@ -281,9 +276,9 @@ if __name__ == '__main__':
             eval_model_multithread(cfg, EVAL_EPISODE, get_player)
     else:
         logger.set_logger_dir(
-            os.path.join(train_logdir, '{}-skip-{}-hist-{}-batch-{}-lr-{}-{}-eps-{}-lamb-{}-reg-{}-{}'.format(
-                MODEL_NAME, args.skip, args.hist_len, args.batch_size, args.lr, args.lr_sched, args.eps_sched,
-                args.lamb, REG, os.path.basename('soccer').split('.')[0])))
+            os.path.join(train_logdir, '{}-skip-{}-hist-{}-batch-{}-lr-{}-{}-eps-{}-reg-{}-{}'.format(
+                MODEL_NAME, args.skip, args.hist_len, args.batch_size, args.lr,
+                args.lr_sched, args.eps_sched, REG, os.path.basename('soccer').split('.')[0])))
         config = get_config()
         if args.load:
             config.session_init = SaverRestore(args.load)
