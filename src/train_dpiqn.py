@@ -50,9 +50,7 @@ LR = None
 AI_SKIP = None
 LAMB = None
 USE_RNN = False
-RNN_CELL = None
-NO_FC = False
-SINGLE_RNN = False
+RNN_CELL = 'lstm'
 FC_HIDDEN = 512
 RNN_HIDDEN = 512
 RNN_STEP = 1
@@ -60,7 +58,6 @@ UPDATE_TARGET_STEP = 10000
 MULTI_TASK = False
 LR_SCHED = None
 EPS_SCHED = None
-RNN_ACTIVATION = None
 MODE = None
 MULTI_TASK_MODE = None
 REG = None
@@ -78,19 +75,11 @@ def get_player(viz=False, train=False):
     #pl = LimitLengthPlayer(pl, 30000)
     return pl
 
-def get_activation():
-    if RNN_ACTIVATION == 'relu':
-        return tf.nn.relu
-    elif RNN_ACTIVATION == 'leaky-relu':
-        return LeakyReLU
-    else:
-        return None
-
 def get_rnn_cell():
     if RNN_CELL == 'gru':
-        return tf.nn.rnn_cell.GRUCell(num_units=RNN_HIDDEN, activation=get_activation())
+        return tf.nn.rnn_cell.GRUCell(num_units=RNN_HIDDEN, activation=tf.nn.relu)
     elif RNN_CELL == 'lstm':
-        return tf.nn.rnn_cell.LSTMCell(num_units=RNN_HIDDEN, state_is_tuple=True, activation=get_activation())
+        return tf.nn.rnn_cell.LSTMCell(num_units=RNN_HIDDEN, state_is_tuple=True, activation=tf.nn.relu)
     else:
         assert 0
 
@@ -112,26 +101,18 @@ class Model(DQNModel):
             image = tf.reshape(image, (self.batch_size * self.channel,) + self.image_shape + (1,))
 
         with tf.variable_scope('q'):
-            with argscope(Conv2D, nl=PReLU.symbolic_function, use_bias=True), \
+            with argscope(Conv2D, nl=PReLU.symbolic_function, use_bias=True, padding='SAME'), \
                     argscope(LeakyReLU, alpha=0.01):
-                padding = 'VALID' if NO_FC else 'SAME'
                 h = (LinearWrap(image)
                      .Conv2D('conv0', out_channel=32, kernel_shape=8, stride=4)
                      .Conv2D('conv1', out_channel=64, kernel_shape=4, stride=2)
                      .Conv2D('conv2', out_channel=64, kernel_shape=3)())
 
-                if NO_FC:
-                    h = symbf.batch_flatten(h)
-                    q_l = h
-                    pi_l = h
-                else:
-                    q_l = FullyConnected('fc0-q', h, FC_HIDDEN, nl=LeakyReLU)
-                    pi_l = FullyConnected('fc0-pi', h, FC_HIDDEN, nl=LeakyReLU)
+                q_l = FullyConnected('fc0-q', h, FC_HIDDEN, nl=LeakyReLU)
+                pi_l = FullyConnected('fc0-pi', h, FC_HIDDEN, nl=LeakyReLU)
 
                 if USE_RNN:
                     # q
-                    if SINGLE_RNN:
-                        q_l = tf.multiply(q_l, pi_l)
                     q_l = tf.reshape(q_l, [self.batch_size, self.channel, FC_HIDDEN])
                     q_cell = get_rnn_cell()
                     q_l, q_rnn_state_out = tf.nn.dynamic_rnn(inputs=q_l,
@@ -155,10 +136,7 @@ class Model(DQNModel):
         for i in range(self.num_agents):
             pi_ys.append(FullyConnected('fct-%d' % i, pi_l, self.num_actions, nl=tf.identity))
 
-        if SINGLE_RNN:
-            l = q_l
-        else:
-            l = tf.multiply(q_l, pi_l)
+        l = tf.multiply(q_l, pi_l)
 
         if self.method != 'Dueling':
             Q = FullyConnected('fct', l, self.num_actions, nl=tf.identity)
@@ -241,26 +219,15 @@ if __name__ == '__main__':
                         choices=['DQN', 'Double', 'Dueling'], default='DQN')
     parser.add_argument('--mode', help='mode',
                         type=str, default=None)
-    parser.add_argument('--cell', help='cell',
-                        choices=['gru', 'lstm', None], default=None)
-    parser.add_argument('--rnn_activation', help='rnn activation',
-                        choices=['relu', 'leaky-relu', None], default=None)
     parser.add_argument('--mt_type', help='multi-task setting',
                         choices=['coop-only', 'opponent-only', 'all'], default='all')
     parser.add_argument('--mt', help='train in 2v2 env', action='store_true', default=False)
     parser.add_argument('--skip', help='act repeat', type=int, default=2)
-    parser.add_argument('--ai_skip', help='act repeat of ai in env', type=int, default=2)
     parser.add_argument('--hist_len', help='hist len', type=int, default=12)
     parser.add_argument('--batch_size', help='batch size', type=int, default=32)
     parser.add_argument('--lr', help='init lr', type=float, default=1e-3)
     parser.add_argument('--lamb', help='lamb', type=float, default=1.0)
     parser.add_argument('--rnn', help='use_rnn', type=str, default=False)
-    parser.add_argument('--no_fc', help='no fc', action='store_true', default=False)
-    parser.add_argument('--single_rnn', help='single rnn', action='store_true', default=False)
-    parser.add_argument('--rnn_h', help='rnn hidden', type=int, default=512)
-    parser.add_argument('--rnn_step', help='rnn update step', type=int, default=1)
-    parser.add_argument('--fc_h', help='fc hidden', type=int, default=512)
-    parser.add_argument('--update_target_step', help='target update step', type=int, default=10000)
     parser.add_argument('--lr_sched', help='lr schedule', type=str, default='600:4e-4,1000:2e-4')
     parser.add_argument('--eps_sched', help='eps schedule', type=str, default='100:0.1,3200:0.01')
     parser.add_argument('--reg', help='reg', action='store_true', default=False)
@@ -270,32 +237,23 @@ if __name__ == '__main__':
         os.environ['CUDA_VISIBLE_DEVICES'] = args.gpu
     METHOD = args.algo
 
-    ACTION_REPEAT = args.skip
+    ACTION_REPEAT = AI_SKIP = args.skip
     FRAME_HISTORY = args.hist_len
     BATCH_SIZE = args.batch_size
     LR = args.lr
-    AI_SKIP = args.ai_skip
     LAMB = args.lamb
     MULTI_TASK = args.mt
     MULTI_TASK_MODE = args.mt_type
     USE_RNN = args.rnn
-    SINGLE_RNN =args.single_rnn
-    RNN_CELL = args.cell
-    NO_FC = args.no_fc
-    RNN_HIDDEN = args.rnn_h
-    RNN_STEP = args.rnn_step
-    FC_HIDDEN = args.fc_h
-    UPDATE_TARGET_STEP = args.update_target_step
     LR_SCHED = args.lr_sched
     EPS_SCHED = args.eps_sched
-    RNN_ACTIVATION = args.rnn_activation
     MODE = args.mode
     REG = args.reg
     train_logdir = args.log
     TASK = args.task
     FIELD = 'large' if args.mt else 'small'
 
-    logger.info('USE_RNN = {}, NO_FC = {}, SINGLE_RNN = {}, RNN_HIDDEN = {}, RNN_STEP = {}'.format(USE_RNN, NO_FC, SINGLE_RNN, RNN_HIDDEN, RNN_STEP))
+    logger.info('USE_RNN = {}, RNN_HIDDEN = {}, RNN_STEP = {}'.format(USE_RNN, RNN_HIDDEN, RNN_STEP))
 
     if MULTI_TASK:
         scenario = 'MT-%s' % MULTI_TASK_MODE
@@ -303,11 +261,9 @@ if __name__ == '__main__':
         scenario = 'ST'
 
     if USE_RNN:
-        MODEL_NAME = '%s-%s-RPI-activation-%s-%d-%d-step-%d-nofc-%s-single-%s-%s' % (scenario, args.algo, RNN_ACTIVATION, FC_HIDDEN, RNN_HIDDEN, RNN_STEP, NO_FC, SINGLE_RNN, RNN_CELL)
-        if NO_FC:
-            FC_HIDDEN = 11*11*64
+        MODEL_NAME = '%s-%s-RPI' % (scenario, args.algo)
     else:
-        MODEL_NAME = '%s-%s-PI-%d' % (scenario, args.algo, FC_HIDDEN)
+        MODEL_NAME = '%s-%s-PI' % (scenario, args.algo)
 
     # set num_actions
     NUM_ACTIONS = SoccerPlayer().get_action_space().num_actions()
@@ -325,9 +281,9 @@ if __name__ == '__main__':
             eval_model_multithread(cfg, EVAL_EPISODE, get_player)
     else:
         logger.set_logger_dir(
-            os.path.join(train_logdir, '{}-skip-{}-ai_skip-{}-hist-{}-batch-{}-lr-{}-{}-eps-{}-lamb-{}-update-{}-reg-{}-{}'.format(
-                MODEL_NAME, args.skip, args.ai_skip, args.hist_len, args.batch_size, args.lr, args.lr_sched, args.eps_sched,
-                args.lamb, UPDATE_TARGET_STEP, REG, os.path.basename('soccer').split('.')[0])))
+            os.path.join(train_logdir, '{}-skip-{}-hist-{}-batch-{}-lr-{}-{}-eps-{}-lamb-{}-reg-{}-{}'.format(
+                MODEL_NAME, args.skip, args.hist_len, args.batch_size, args.lr, args.lr_sched, args.eps_sched,
+                args.lamb, REG, os.path.basename('soccer').split('.')[0])))
         config = get_config()
         if args.load:
             config.session_init = SaverRestore(args.load)
