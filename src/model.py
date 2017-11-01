@@ -24,7 +24,8 @@ def get_rnn_cell():
 
 class MAModel(ModelDesc):
     def __init__(self, image_shape, channel, method, num_actions, gamma, ctrl_size=1,
-                lr=1e-3, lamb=1.0, h_size=512, update_step=1, multi_task=False, num_agents=1, reg=True, mt_type='all', models=None, dnp=False):
+                lr=1e-3, lamb=1.0, h_size=512, update_step=1, multi_task=False, num_agents=1,
+                reg=True, mt_type='all', models=None, dnp=False, ent=False):
         self.image_shape = image_shape
         self.channel = channel
         self.method = method
@@ -39,6 +40,7 @@ class MAModel(ModelDesc):
         self.reg = reg
         self.ctrl_size = ctrl_size
         self.dnp = dnp
+        self.ent = ent
 
         assert mt_type in ['all', 'coop-only', 'opponent-only']
         self.mt_type = mt_type
@@ -150,6 +152,9 @@ class MAModel(ModelDesc):
                 scale = 0.0
 
             pi_costs.append(scale * tf.nn.softmax_cross_entropy_with_logits(labels=o, logits=pi_value[i, :]))
+            pi_prob = tf.nn.softmax(pi_value[i, :])
+            log_prob = tf.log(pi_prob + 1e-8)
+            xent_loss = tf.reduce_sum(pi_prob*log_prob) * 0.01
 
         pi_cost = self.lamb * tf.add_n(pi_costs)
         q_cost = tf.reshape((symbf.huber_loss(target - pred_action_value)), (self.batch_size * self.update_step, self.ctrl_size))
@@ -159,7 +164,12 @@ class MAModel(ModelDesc):
         else:
             reg_coef = 1.0
 
-        self.cost_pi = tf.reduce_mean(q_cost[:, 0] * reg_coef + pi_cost, name='cost_pi')
+        self.cost_pi = q_cost[:, 0] * reg_coef + pi_cost
+        if self.ent:
+            print('apply xent_loss')
+            self.cost_pi += xent_loss
+            summary.add_moving_summary(tf.reduce_mean(xent_loss, name='xent_loss'))
+        self.cost_pi = tf.reduce_mean(self.cost_pi, name='cost_pi')
         self.cost_dqn = tf.reduce_mean(q_cost[:, 1], name='cost_dqn')
 
         if self.models_type == 'both':

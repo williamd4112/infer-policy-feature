@@ -69,9 +69,10 @@ MODELS = None
 CTRL_SIZE = None
 TRAIN_TYPE = None
 DNP = None
+ENT = None
 
 def get_player(viz=False, train=False):
-    pl = SoccerPlayer(image_shape=IMAGE_SIZE[::-1], viz=viz, frame_skip=ACTION_REPEAT, field=FIELD, ai_frame_skip=AI_SKIP, team_size=2 if MULTI_TASK else 1, mode=MODE, train_type=TRAIN_TYPE, verbose=False)
+    pl = SoccerPlayer(image_shape=IMAGE_SIZE[::-1], viz=viz, frame_skip=ACTION_REPEAT, field=FIELD, ai_frame_skip=AI_SKIP, team_size=2 if MULTI_TASK else 1, mode=MODE, train_type=TRAIN_TYPE, verbose=True)
     if not train:
         # create a new axis to stack history on
         pl = MapPlayerState(pl, lambda im: im[:, :, np.newaxis])
@@ -99,7 +100,7 @@ def get_config():
     else:
         predictor_io_names=(['state'], ['network-0/Qvalue-0', 'network-1/Qvalue-1'])
 
-    M = MAModel(image_shape=IMAGE_SIZE, channel=FRAME_HISTORY, method=METHOD, num_actions=NUM_ACTIONS, gamma=GAMMA, ctrl_size=CTRL_SIZE, lamb=LAMB, reg=REG, models=MODELS, dnp=DNP)
+    M = MAModel(image_shape=IMAGE_SIZE, channel=FRAME_HISTORY, method=METHOD, num_actions=NUM_ACTIONS, gamma=GAMMA, ctrl_size=CTRL_SIZE, lamb=LAMB, reg=REG, models=MODELS, dnp=DNP, ent=ENT)
     expreplay = AugmentExpReplay(
         predictor_io_names=predictor_io_names,
         player=get_player(train=True),
@@ -172,7 +173,8 @@ if __name__ == '__main__':
     parser.add_argument('--lr_sched', help='lr schedule', type=str, default='600:4e-4,1000:2e-4')
     parser.add_argument('--eps_sched', help='eps decay schedule', type=str, default='100:0.1,3200:0.01')
     parser.add_argument('--reg', help='reg', action='store_true', default=False)
-    parser.add_argument('--dnp', help='reg', action='store_true', default=False)
+    parser.add_argument('--ent', help='ent', action='store_true', default=False)
+    parser.add_argument('--dnp', help='dnp', action='store_true', default=False)
     args = parser.parse_args()
 
     if args.gpu:
@@ -198,6 +200,7 @@ if __name__ == '__main__':
     CTRL_SIZE = 2
     TRAIN_TYPE = args.type
     DNP = args.dnp
+    ENT = args.ent
     print("****")
     print(TRAIN_TYPE)
 
@@ -217,9 +220,17 @@ if __name__ == '__main__':
     if args.task != 'train':
         assert args.load is not None
         model = MAModel(image_shape=IMAGE_SIZE, channel=FRAME_HISTORY, method=METHOD, num_actions=NUM_ACTIONS, gamma=GAMMA, ctrl_size=2, lamb=LAMB)
+
+        if MODELS == 'both':
+            prefixs = ['network-0', 'network-1']
+        elif MODELS == 'pi':
+            prefixs = ['network-0']
+        else:
+            prefixs = ['network-1']
+
         cfg = PredictConfig(
             model=model,
-            session_init=get_model_loader(model, args.load),
+            session_init=get_model_loader(model, args.load, prefixs, MODELS),
             input_names=['state'],
             output_names=['network-0/Qvalue-0', 'network-1/Qvalue-1'])
         if args.task == 'play':
@@ -228,9 +239,9 @@ if __name__ == '__main__':
             eval_model_multithread(cfg, EVAL_EPISODE, get_player)
     else:
         logger.set_logger_dir(
-            os.path.join(train_logdir, '{}-skip-{}-hist-{}-batch-{}-lr-{}-{}-eps-{}-reg-{}-{}-lamb{}-type-{}-exp-dnp-{}'.format(
+            os.path.join(train_logdir, '{}-skip-{}-hist-{}-batch-{}-lr-{}-{}-eps-{}-reg-{}-{}-lamb{}-type-{}-exp-dnp-{}-ent-{}'.format(
                 MODEL_NAME, args.skip, args.hist_len, args.batch_size, args.lr,
-                args.lr_sched, args.eps_sched, REG, os.path.basename('soccer').split('.')[0], args.lamb, args.type, args.dnp)))
+                args.lr_sched, args.eps_sched, REG, os.path.basename('soccer').split('.')[0], args.lamb, args.type, args.dnp, args.ent)))
         config = get_config()
         if args.load:
             config.session_init = SaverRestore(args.load)

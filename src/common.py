@@ -98,9 +98,13 @@ def eval_model_multithread(cfg, nr_eval, get_player_fn):
     for ep in range(nr_eval):
         scores.append(play_one_episode(player, predfunc))
         scores_ = np.asarray(scores)
-        print('%d: Max: %f, Min: %f, Mean: %f' % (ep, scores_.max(), scores_.min(), scores_.mean()))
+        print("Episode [%d]:" % ep)
+        print("Player 0 - Mean: %f, Max: %f, Min %f" % (np.mean(scores_[:, 0, 0]), np.max(scores_[:, 0, 0]), np.min(scores_[:, 0, 0])))
+        print("Player 1 - Mean: %f, Max: %f, Min %f" % (np.mean(scores_[:, 0, 1]), np.max(scores_[:, 0, 1]), np.min(scores_[:, 0, 1])))
     scores = np.array(scores)
-    print('Over %d episodes, Max: %f, Min: %f, Mean: %f' % (nr_eval, scores.max(), scores.min(), scores.mean()))
+    print("Evaluation over!")
+    print("Player 0 - Mean: %f, Max: %f, Min %f" % (np.mean(scores[:, 0, 0]), np.max(scores[:, 0, 0]), np.min(scores[:, 0, 0])))
+    print("Player 1 - Mean: %f, Max: %f, Min %f" % (np.mean(scores[:, 0, 1]), np.max(scores[:, 0, 1]), np.min(scores[:, 0, 1])))
     '''
     func = OfflinePredictor(cfg)
     NR_PROC = min(multiprocessing.cpu_count() // 2, 8)
