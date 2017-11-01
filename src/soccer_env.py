@@ -10,15 +10,17 @@ import threading
 import six
 from six.moves import range
 import random
-from tensorpack.utils import (get_rng, logger, execute_only_once)
+from tensorpack.utils.utils import (get_rng, execute_only_once)
+from tensorpack.utils import logger
 from tensorpack.utils.fs import get_dataset_path
 from tensorpack.utils.stats import StatCounter
 
 from tensorpack.RL.envbase import RLEnvironment, DiscreteActionSpace
 
-import pygame_soccer.soccer.soccer_environment as soccer_environment
-import pygame_soccer.soccer.soccer_renderer as soccer_renderer
-import pygame_soccer.util.file_util as file_util
+import pygame_rl.scenario.soccer_environment as soccer_environment
+import pygame_rl.scenario.soccer_renderer as soccer_renderer
+import pygame_rl.util.file_util as file_util
+import pdb
 
 __all__ = ['SoccerPlayer', 'get_raw_env']
 
@@ -181,18 +183,19 @@ class SoccerPlayer(RLEnvironment):
 
     def __init__(self, viz=0,
                 field=None, partial=False, radius=2,
-                frame_skip=4,
+                frame_skip=4, verbose=False,
                 image_shape=(84, 84),
-                mode=None, team_size=1, ai_frame_skip=1, raw_env=soccer_environment.SoccerEnvironment):
+                mode=None, team_size=1, ai_frame_skip=1, train_type='both', raw_env=soccer_environment.SoccerEnvironment):
         super(SoccerPlayer, self).__init__()
 
         if team_size > 1 and mode != None:
             self.mode = mode.split(',')
         else:
-            self.mode = [ mode ]
+            self.mode = ['DQN_OPPONENT']
         self.field = field
         self.partial = partial
         self.viz = viz
+        self.verbose = verbose
         if self.viz:
             self.renderer_options = soccer_renderer.RendererOptions(
                 show_display=True, max_fps=10, enable_key_events=True)
@@ -207,6 +210,7 @@ class SoccerPlayer(RLEnvironment):
         self.team_size = team_size
         self.env_options = soccer_environment.SoccerEnvironmentOptions(team_size=self.team_size, map_path=map_path, ai_frame_skip=ai_frame_skip)
         self.env = raw_env(env_options=self.env_options, renderer_options=self.renderer_options)
+        self.train_type = train_type
 
         self.computer_team_name = self.env.team_names[1]
         self.player_team_name = self.env.team_names[0]
@@ -280,7 +284,8 @@ class SoccerPlayer(RLEnvironment):
         return DiscreteActionSpace(len(self.actions))
 
     def finish_episode(self):
-        self.stats['score'].append(self.current_episode_score.sum)
+        score = np.array(self.current_episode_score._values)
+        self.stats['score'].append([np.sum(score[:,0]), np.sum(score[:,1])])
 
     def restart_episode(self):
         self.current_episode_score.reset()
@@ -292,12 +297,29 @@ class SoccerPlayer(RLEnvironment):
 
     def action(self, act):
         ball_pos_agent_old = self.env.state.get_ball_possession()
-        r = 0
+        r = np.array([0., 0.])
         ball_poss_old = self.env.state.get_ball_possession()['team_name']
         for k in range(self.frame_skip):
             self.timestep += 1
             if k == self.frame_skip - 1:
                 self.last_raw_screen = self._grab_raw_image()
+
+            if self.mode[0] == 'DQN_OPPONENT' or type(act) is list:
+                actions = {}
+                if self.train_type == 'both':
+                    for team_name in self.env.team_names:
+                        for team_agent_index in range(self.env.options.team_size):
+                            agent_index = self.env.get_agent_index(team_name, team_agent_index)
+                            actions[agent_index] = self.env.actions[act[agent_index]]
+                elif self.train_type == 'dqn':
+                    actions[0] = None
+                    actions[1] = self.env.actions[act[1]]
+                else:
+                    actions[0] = self.env.actions[act[0]]
+                    actions[1] = None
+                if self.verbose:
+                    print("actions: {}".format(actions))
+                ret = self.env.take_action(actions)
 
             if self.mode[0] == 'WEAKCOOP':
                 actions = {}
@@ -313,8 +335,6 @@ class SoccerPlayer(RLEnvironment):
                 if random.random() < 0.5:
                     actions[coop_index] = random.choice(self.env.actions)
                 ret = self.env.take_all_actions(actions)
-            else:
-                ret = self.env.take_action(self.env.actions[act])
 
             if self.mode[0] == 'OPPONENT_DYNAMIC':
                 choices = ['OFFENSIVE', 'DEFENSIVE']
@@ -345,7 +365,7 @@ class SoccerPlayer(RLEnvironment):
                 ret = self.env.take_all_actions(actions)
             if k == 0:
                 self.last_info['agent_actions'] = self._get_computer_actions()
-            r += ret.reward
+            r += np.array([ret.reward, -ret.reward])
 
             if self.env.state.is_terminal():
                 break

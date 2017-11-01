@@ -20,14 +20,16 @@ from tensorpack import *
 from tensorpack.utils.concurrency import *
 from tensorpack.tfutils import symbolic_functions as symbf
 from tensorpack.RL import *
+from trainer import MLQueueInputTrainer as QueueInputTrainer
 import tensorflow as tf
 
-from DPIQNModel import Model as DQNModel
+from model import MAModel
 import common
 from common import play_model, Evaluator, eval_model_multithread
 from soccer_env import SoccerPlayer
 from augment_expreplay import AugmentExpReplay
 from tensorpack.tfutils import symbolic_functions as symbf
+from loader import get_model_loader
 
 BATCH_SIZE = None
 IMAGE_SIZE = (84, 84)
@@ -43,6 +45,7 @@ INIT_MEMORY_SIZE = 5e4
 STEPS_PER_EPOCH = 1000 // UPDATE_FREQ * 10  # each epoch is 100k played frames
 EVAL_EPISODE = 50
 
+LAMB = None
 NUM_ACTIONS = None
 METHOD = None
 FIELD = None
@@ -62,16 +65,20 @@ MULTI_TASK_MODE = None
 REG = None
 TASK = None
 PI_COEF = 1.0
+MODELS = None
+CTRL_SIZE = None
+TRAIN_TYPE = None
+DNP = None
 
 def get_player(viz=False, train=False):
-    pl = SoccerPlayer(image_shape=IMAGE_SIZE[::-1], viz=viz, frame_skip=ACTION_REPEAT, field=FIELD, ai_frame_skip=AI_SKIP, team_size=2 if MULTI_TASK else 1, mode=MODE)
+    pl = SoccerPlayer(image_shape=IMAGE_SIZE[::-1], viz=viz, frame_skip=ACTION_REPEAT, field=FIELD, ai_frame_skip=AI_SKIP, team_size=2 if MULTI_TASK else 1, mode=MODE, train_type=TRAIN_TYPE, verbose=False)
     if not train:
         # create a new axis to stack history on
         pl = MapPlayerState(pl, lambda im: im[:, :, np.newaxis])
         # in training, history is taken care of in expreplay buffer
         pl = HistoryFramePlayer(pl, FRAME_HISTORY)
 
-        pl = PreventStuckPlayer(pl, 30, 1)
+        pl = PreventStuckPlayer(pl, 30, [1, 1])
     #pl = LimitLengthPlayer(pl, 30000)
     return pl
 
@@ -83,83 +90,16 @@ def get_rnn_cell():
     else:
         assert 0
 
-class Model(DQNModel):
-    def __init__(self):
-        super(Model, self).__init__(IMAGE_SIZE, FRAME_HISTORY, METHOD,
-            NUM_ACTIONS, GAMMA, LR, PI_COEF, RNN_HIDDEN, RNN_STEP, MULTI_TASK, 3 if MULTI_TASK else 1, REG, MULTI_TASK_MODE)
-
-    def get_rnn_init_state(self, cell, name):
-        return cell.zero_state(self.batch_size, tf.float32)
-
-    def _get_DQN_prediction(self, image):
-        """ image: [0,255]"""
-        image = image / 255.0
-
-        if USE_RNN:
-            self.batch_size = tf.shape(image)[0]
-            image = tf.transpose(image, perm=[0, 3, 1, 2])
-            image = tf.reshape(image, (self.batch_size * self.channel,) + self.image_shape + (1,))
-
-        with tf.variable_scope('q'):
-            with argscope(Conv2D, nl=PReLU.symbolic_function, use_bias=True, padding='SAME'), \
-                    argscope(LeakyReLU, alpha=0.01):
-                h = (LinearWrap(image)
-                     .Conv2D('conv0', out_channel=32, kernel_shape=8, stride=4)
-                     .Conv2D('conv1', out_channel=64, kernel_shape=4, stride=2)
-                     .Conv2D('conv2', out_channel=64, kernel_shape=3)())
-
-                q_l = FullyConnected('fc0-q', h, FC_HIDDEN, nl=LeakyReLU)
-                pi_l = FullyConnected('fc0-pi', h, FC_HIDDEN, nl=LeakyReLU)
-
-                if USE_RNN:
-                    # q
-                    q_l = tf.reshape(q_l, [self.batch_size, self.channel, FC_HIDDEN])
-                    q_cell = get_rnn_cell()
-                    q_l, q_rnn_state_out = tf.nn.dynamic_rnn(inputs=q_l,
-                                cell=q_cell,
-                                initial_state=self.get_rnn_init_state(q_cell, 'q'),
-                                dtype=tf.float32, scope='rnn-q')
-                    q_l = q_l[:, -RNN_STEP:, :]
-                    q_l = tf.reshape(q_l, (self.batch_size * RNN_STEP, RNN_HIDDEN))
-
-                    # pi
-                    pi_l = tf.reshape(pi_l, [self.batch_size, self.channel, FC_HIDDEN])
-                    pi_cell = get_rnn_cell()
-                    pi_l, pi_rnn_state_out = tf.nn.dynamic_rnn(inputs=pi_l,
-                                cell=pi_cell,
-                                initial_state=self.get_rnn_init_state(pi_cell, 'pi'),
-                                dtype=tf.float32, scope='rnn-pi')
-                    pi_l = pi_l[:, -RNN_STEP:, :]
-                    pi_l = tf.reshape(pi_l, (self.batch_size * RNN_STEP, RNN_HIDDEN))
-
-        pi_ys = []
-        for i in range(self.num_agents):
-            pi_ys.append(FullyConnected('fct-%d' % i, pi_l, self.num_actions, nl=tf.identity))
-
-        l = tf.multiply(q_l, pi_l)
-
-        if self.method != 'Dueling':
-            Q = FullyConnected('fct', l, self.num_actions, nl=tf.identity)
-        else:
-            # Dueling DQN
-            V = FullyConnected('fctV', l, 1, nl=tf.identity)
-            As = FullyConnected('fctA', l, self.num_actions, nl=tf.identity)
-            Q = tf.add(As, V - tf.reduce_mean(As, 1, keep_dims=True))
-
-        pi_values = [ tf.identity(pi_ys[i], name='Pivalue-%d' % i) for i in range(self.num_agents) ]
-
-        return tf.identity(Q, name='Qvalue'), pi_values, None, None
-
 def get_config():
     if TASK == 'play':
         if MULTI_TASK:
-            predictor_io_names=(['state'], ['Qvalue', 'Pivalue-0', 'Pivalue-1', 'Pivalue-2'])
+            predictor_io_names=(['state'], ['network-0/Qvalue-0', 'network-1/Qvalue-1', 'Pivalue-0', 'Pivalue-1', 'Pivalue-2'])
         else:
-            predictor_io_names=(['state'], ['Qvalue', 'Pivalue-0'])
+            predictor_io_names=(['state'], ['network-0/Qvalue-0', 'network-1/Qvaule-1', 'network-0/Pivalue-0-0'])
     else:
-        predictor_io_names=(['state'], ['Qvalue'])
+        predictor_io_names=(['state'], ['network-0/Qvalue-0', 'network-1/Qvalue-1'])
 
-    M = Model()
+    M = MAModel(image_shape=IMAGE_SIZE, channel=FRAME_HISTORY, method=METHOD, num_actions=NUM_ACTIONS, gamma=GAMMA, ctrl_size=CTRL_SIZE, lamb=LAMB, reg=REG, models=MODELS, dnp=DNP)
     expreplay = AugmentExpReplay(
         predictor_io_names=predictor_io_names,
         player=get_player(train=True),
@@ -189,7 +129,7 @@ def get_config():
         callbacks=[
             ModelSaver(),
             PeriodicTrigger(
-                RunOp(DQNModel.update_target_param, verbose=True),
+                RunOp(MAModel.update_target_param, verbose=True),
                 every_k_steps=UPDATE_TARGET_STEP // UPDATE_FREQ),    # update target network every 10k steps
             expreplay,
             ScheduledHyperParamSetter('learning_rate',
@@ -217,6 +157,8 @@ if __name__ == '__main__':
                         choices=['play', 'eval', 'train'], default='train')
     parser.add_argument('--algo', help='algorithm for computing Q-value',
                         choices=['DQN', 'Double', 'Dueling'], default='DQN')
+    parser.add_argument('--type', help='algorithm for computing Q-value',
+                        choices=['both', 'pi', 'dqn'], default='both')
     parser.add_argument('--mode', help='specify ai mode in env', type=str, default=None)
     parser.add_argument('--mt_mode', help='multi-task setting',
                         choices=['coop-only', 'opponent-only', 'all'], default='all')
@@ -225,10 +167,12 @@ if __name__ == '__main__':
     parser.add_argument('--hist_len', help='hist len', type=int, default=12)
     parser.add_argument('--batch_size', help='batch size', type=int, default=32)
     parser.add_argument('--lr', help='init lr value', type=float, default=1e-3)
+    parser.add_argument('--lamb', help='init lr value', type=float, default=1.0)
     parser.add_argument('--rnn', help='use rnn (DRPIQN)', type=str, default=False)
     parser.add_argument('--lr_sched', help='lr schedule', type=str, default='600:4e-4,1000:2e-4')
     parser.add_argument('--eps_sched', help='eps decay schedule', type=str, default='100:0.1,3200:0.01')
     parser.add_argument('--reg', help='reg', action='store_true', default=False)
+    parser.add_argument('--dnp', help='reg', action='store_true', default=False)
     args = parser.parse_args()
 
     if args.gpu:
@@ -249,6 +193,13 @@ if __name__ == '__main__':
     train_logdir = args.log
     TASK = args.task
     FIELD = 'large' if args.mt else 'small'
+    LAMB = args.lamb
+    MODELS = args.type
+    CTRL_SIZE = 2
+    TRAIN_TYPE = args.type
+    DNP = args.dnp
+    print("****")
+    print(TRAIN_TYPE)
 
     if MULTI_TASK:
         scenario = 'MT-%s' % MULTI_TASK_MODE
@@ -265,20 +216,21 @@ if __name__ == '__main__':
 
     if args.task != 'train':
         assert args.load is not None
+        model = MAModel(image_shape=IMAGE_SIZE, channel=FRAME_HISTORY, method=METHOD, num_actions=NUM_ACTIONS, gamma=GAMMA, ctrl_size=2, lamb=LAMB)
         cfg = PredictConfig(
-            model=Model(),
-            session_init=get_model_loader(args.load),
+            model=model,
+            session_init=get_model_loader(model, args.load),
             input_names=['state'],
-            output_names=['Qvalue'])
+            output_names=['network-0/Qvalue-0', 'network-1/Qvalue-1'])
         if args.task == 'play':
             play_model(cfg, get_player(viz=1))
         elif args.task == 'eval':
             eval_model_multithread(cfg, EVAL_EPISODE, get_player)
     else:
         logger.set_logger_dir(
-            os.path.join(train_logdir, '{}-skip-{}-hist-{}-batch-{}-lr-{}-{}-eps-{}-reg-{}-{}'.format(
+            os.path.join(train_logdir, '{}-skip-{}-hist-{}-batch-{}-lr-{}-{}-eps-{}-reg-{}-{}-lamb{}-type-{}-exp-dnp-{}'.format(
                 MODEL_NAME, args.skip, args.hist_len, args.batch_size, args.lr,
-                args.lr_sched, args.eps_sched, REG, os.path.basename('soccer').split('.')[0])))
+                args.lr_sched, args.eps_sched, REG, os.path.basename('soccer').split('.')[0], args.lamb, args.type, args.dnp)))
         config = get_config()
         if args.load:
             config.session_init = SaverRestore(args.load)

@@ -10,7 +10,8 @@ import six
 from six.moves import queue, range
 
 from tensorpack.dataflow import DataFlow
-from tensorpack.utils import logger, get_tqdm, get_rng
+from tensorpack.utils import logger
+from tensorpack.utils.utils import get_tqdm, get_rng
 from tensorpack.utils.concurrency import LoopThread, ShareSessionThread
 from tensorpack.callbacks.base import Callback
 
@@ -115,7 +116,7 @@ class AugmentExpReplay(ExpReplay, Callback):
         """ populate a transition by epsilon-greedy"""
         old_s = self.player.current_state()
         if self.rng.rand() <= self.exploration or (len(self.mem) <= self.history_len):
-            act = self.rng.choice(range(self.num_actions))
+            act = [self.rng.choice(range(self.num_actions)) for n in range(self.num_agents*2)]
         else:
             # build a history state
             history = self.mem.recent_state()
@@ -123,8 +124,8 @@ class AugmentExpReplay(ExpReplay, Callback):
             history = np.stack(history, axis=2)
 
             # assume batched network
-            q_values = self.predictor([[history]])[0][0]  # this is the bottleneck
-            act = np.argmax(q_values)
+            q_values = self.predictor([[history]])  # this is the bottleneck
+            act = [np.argmax(q) for q in q_values]
 
         reward, isOver = self.player.action(act)
         # NOTE: since modify action interface will destroy the proxy design

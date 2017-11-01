@@ -11,7 +11,8 @@ import six
 from six.moves import queue, range
 
 from tensorpack.dataflow import DataFlow
-from tensorpack.utils import logger, get_tqdm, get_rng
+from tensorpack.utils import logger
+from tensorpack.utils.utils import get_tqdm, get_rng
 from tensorpack.utils.concurrency import LoopThread, ShareSessionThread
 from tensorpack.callbacks.base import Callback
 
@@ -28,8 +29,8 @@ class ReplayMemory(object):
         self.history_len = int(history_len)
 
         self.state = np.zeros((self.max_size,) + state_shape, dtype='uint8')
-        self.action = np.zeros((self.max_size,), dtype='int32')
-        self.reward = np.zeros((self.max_size,), dtype='float32')
+        self.action = np.zeros((self.max_size, 2), dtype='int32')
+        self.reward = np.zeros((self.max_size, 2), dtype='float32')
         self.isOver = np.zeros((self.max_size,), dtype='bool')
 
         self._curr_size = 0
@@ -249,9 +250,11 @@ class ExpReplay(DataFlow, Callback):
         stats = self.player.stats
         for k, v in six.iteritems(stats):
             try:
-                mean, max = np.mean(v), np.max(v)
-                self.trainer.monitors.put_scalar('expreplay/mean_' + k, mean)
-                self.trainer.monitors.put_scalar('expreplay/max_' + k, max)
+                v = np.array(v)
+                self.trainer.monitors.put_scalar('expreplay/mean_{}_0'.format(k), np.mean(v[:,0]))
+                self.trainer.monitors.put_scalar('expreplay/max_{}_0'.format(k), np.max(v[:,0]))
+                self.trainer.monitors.put_scalar('expreplay/mean_{}_1'.format(k), np.mean(v[:,1]))
+                self.trainer.monitors.put_scalar('expreplay/max_{}_1'.format(k), np.max(v[:,1]))
             except:
                 logger.exception("Cannot log training scores.")
         self.player.reset_stat()
@@ -262,8 +265,8 @@ if __name__ == '__main__':
 
     def predictor(x):
         np.array([1, 1, 1, 1])
-    
-    from soccer_env import SoccerPlayer 
+
+    from soccer_env import SoccerPlayer
 
     player = SoccerPlayer(image_shape=(84, 84), viz=False, frame_skip=4)
 

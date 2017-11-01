@@ -18,23 +18,26 @@ from tensorpack.utils.stats import *
 def play_one_episode(player, func, verbose=False):
     def f(s):
         spc = player.get_action_space()
-        output = func([[s]])[0]
-        act = output[0].argmax()
-        pis = [ pi[0] for pi in output[1:] ]
-
+        output = func([[s]])
+        act = [np.argmax(o) for o in output]
         if random.random() < 0.001:
-            act = spc.sample()
-        if verbose:
-            print(act, pis)
+            act = [spc.sample(), spc.sample()]
         return act
-    return np.mean(player.play_one_episode(f))
+    r = player.play_one_episode(f)
+    return r
 
 
 def play_model(cfg, player):
     predfunc = OfflinePredictor(cfg)
     while True:
         score = play_one_episode(player, predfunc)
-        print("Total:", score)
+        score = score[0]
+        if score[0] > score[1]:
+            print("Player [0] wins!")
+        elif score[0] < score[1]:
+            print("Player [1] wins!")
+        else:
+            print("Draw!")
 
 
 def eval_with_funcs(predictors, nr_eval, get_player_fn):
@@ -105,7 +108,7 @@ def eval_model_multithread(cfg, nr_eval, get_player_fn):
     logger.info("Average Score: {}; Max Score: {}".format(mean, max))
     '''
 
-class Evaluator(Triggerable):
+class Evaluator(PeriodicTrigger):
     def __init__(self, nr_eval, input_names, output_names, get_player_fn):
         self.eval_episode = nr_eval
         self.input_names = input_names
